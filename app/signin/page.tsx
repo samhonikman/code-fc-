@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createUser, validateUser, getCurrentUser, logoutUser } from "@/lib/user";
+import getSupabaseClient from "@/lib/supabaseClient";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -14,31 +14,95 @@ export default function SignInPage() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
 
   useEffect(() => {
-    setCurrentUser(getCurrentUser());
+    const local = localStorage.getItem("fut_current_user");
+    setCurrentUser(local);
   }, []);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  async function migrateToSupabase(accessToken: string, userId: string) {
+    try {
+      const bought = JSON.parse(localStorage.getItem("boughtPlayers") || "[]");
+      const positions = JSON.parse(localStorage.getItem("pitchPositions") || "{}");
+      const bench = JSON.parse(localStorage.getItem("benchPlayers") || "[]");
+      const budget = parseInt(localStorage.getItem("budget") || "0", 10) || 0;
+
+      const payload = { budget, positions, bench, bought };
+
+      const res = await fetch('/api/squads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        // mark migrated and clear legacy local keys
+        localStorage.setItem('migrated_to_supabase', '1');
+        localStorage.removeItem('boughtPlayers');
+        localStorage.removeItem('pitchPositions');
+        localStorage.removeItem('benchPlayers');
+        // keep budget locally if desired but it's now in Supabase
+      } else {
+        console.warn('Migration to Supabase failed', await res.text());
+      }
+    } catch (e) {
+      console.warn('Migration error', e);
+    }
+  }
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (mode === "signup") {
-      const result = createUser(username, password);
-      setMessage(result.message);
-      if (result.success) {
-        router.push("/");
+    setMessage(null);
+    const uname = username.trim().toLowerCase();
+    if (!uname || password.length < 4) {
+      setMessage('Provide a username and a password (≥4 chars).');
+      return;
+    }
+
+    const email = `${uname}@local.dev`;
+
+    if (mode === 'signup') {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      // signUp may not return session until email confirmed; attempt sign in
+      const signIn = await supabase.auth.signInWithPassword({ email, password });
+      if (signIn.error) {
+        setMessage(signIn.error.message || 'Signed up — please confirm your email.');
+      } else {
+        const userId = signIn.data.session?.user?.id || data.user?.id;
+        const token = signIn.data.session?.access_token || '';
+        if (userId) localStorage.setItem('fut_current_user', userId);
+        if (token && userId) await migrateToSupabase(token, userId);
+        router.push('/');
       }
       return;
     }
 
-    const result = validateUser(username, password);
-    setMessage(result.message);
-    if (result.success) {
-      router.push("/");
+    // sign in
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setMessage(error.message || 'Sign in failed');
+      return;
     }
+    const userId = data.session?.user?.id;
+    const token = data.session?.access_token;
+    if (userId) localStorage.setItem('fut_current_user', userId);
+    if (token && userId) await migrateToSupabase(token, userId);
+    router.push('/');
   };
 
-  const handleLogout = () => {
-    logoutUser();
+  const handleLogout = async () => {
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
+    localStorage.removeItem('fut_current_user');
     setCurrentUser(null);
-    setMessage("Logged out.");
+    setMessage('Logged out.');
   };
 
   return (
@@ -47,7 +111,7 @@ export default function SignInPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold">Account</h1>
-            <p className="text-gray-400">Sign in or create an account to save your roster.</p>
+            <p className="text-gray-400">Sign in or create an account to save your roster (Supabase).</p>
           </div>
           <Link href="/" className="text-sm text-blue-400 hover:text-blue-300">
             ← Back home
@@ -68,14 +132,14 @@ export default function SignInPage() {
 
         <div className="flex items-center gap-3 mb-6">
           <button
-            onClick={() => setMode("signin")}
-            className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold transition ${mode === "signin" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
+            onClick={() => setMode('signin')}
+            className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold transition ${mode === 'signin' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
           >
             Sign In
           </button>
           <button
-            onClick={() => setMode("signup")}
-            className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold transition ${mode === "signup" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
+            onClick={() => setMode('signup')}
+            className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold transition ${mode === 'signup' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
           >
             Create Account
           </button>
@@ -88,7 +152,7 @@ export default function SignInPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500"
-              placeholder="Enter a username"
+              placeholder="Choose a username"
             />
           </div>
 
@@ -109,7 +173,7 @@ export default function SignInPage() {
             type="submit"
             className="w-full rounded-2xl bg-green-600 px-4 py-3 font-semibold text-white hover:bg-green-500 transition"
           >
-            {mode === "signup" ? "Create Account" : "Sign In"}
+            {mode === 'signup' ? 'Create Account' : 'Sign In'}
           </button>
         </form>
       </div>
