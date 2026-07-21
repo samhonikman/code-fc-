@@ -3,15 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import SquadManager from "@/components/SquadManager";
+import YouthAcademy from "@/components/YouthAcademy";
+import { getCurrentUser, getUserKey } from "@/lib/user";
 
 export default function Home() {
   const [budget, setBudget] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!localStorage.getItem("budget")) {
-      localStorage.setItem("budget", "10000000000");
+    setCurrentUser(getCurrentUser());
+    const budgetKey = getUserKey("budget");
+    if (!localStorage.getItem(budgetKey)) {
+      localStorage.setItem(budgetKey, "10000000000");
     }
-    setBudget(parseInt(localStorage.getItem("budget")!));
+    setBudget(parseInt(localStorage.getItem(budgetKey)!));
   }, []);
 
   return (
@@ -24,6 +29,12 @@ export default function Home() {
               💰 ${budget.toLocaleString()}
             </span>
           )}
+          <Link
+            href={currentUser ? "/signin" : "/signin"}
+            className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            {currentUser ? `Account: ${currentUser}` : "Sign In"}
+          </Link>
           <Link
             href="/simulate"
             className="bg-green-600 hover:bg-green-500 text-white font-semibold px-5 py-2 rounded-lg transition-colors"
@@ -39,6 +50,7 @@ export default function Home() {
         </div>
       </div>
       <SquadManager />
+      <YouthAcademy />
     </main>
   );
 }

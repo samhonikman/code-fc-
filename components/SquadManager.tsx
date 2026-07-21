@@ -4,6 +4,21 @@ import { useState, useEffect, useRef } from "react";
 import Pitch from "./Pitch";
 import Bench from "./Bench";
 import PlayerModal from "./PlayerModal";
+import { getUserKey } from "@/lib/user";
+
+function normalizeName(name: string | undefined | null) {
+  if (!name) return "";
+  try {
+    return name
+      .toString()
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .toLowerCase()
+      .trim();
+  } catch {
+    return name.toLowerCase().trim();
+  }
+}
 
 export type Player = {
   id: string; // ← string now; no more +100 offset collisions
@@ -30,16 +45,31 @@ export default function SquadManager() {
   useEffect(() => { positionsRef.current = positions; }, [positions]);
 
   useEffect(() => {
-    const bought: any[] = JSON.parse(localStorage.getItem("boughtPlayers") || "[]");
-    const savedPositions: Record<string, Player> = JSON.parse(localStorage.getItem("pitchPositions") || "{}");
-    const savedBench: Player[] = JSON.parse(localStorage.getItem("benchPlayers") || "[]");
+    const bought: any[] = JSON.parse(localStorage.getItem(getUserKey("boughtPlayers")) || "[]");
+    const savedPositions: Record<string, Player> = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}");
+    const savedBench: Player[] = JSON.parse(localStorage.getItem(getUserKey("benchPlayers")) || "[]");
 
-    // Build sets of IDs already placed to avoid duplicates
-    const pitchedIds = new Set(Object.values(savedPositions).map((p) => p.id));
-    const benchedIds = new Set(savedBench.map((p) => p.id));
+    // Clean saved positions: ensure no duplicated player IDs across pitch positions
+    const seenIds = new Set<string>();
+    const cleanedPositions: Record<string, Player> = {};
+    for (const [pos, player] of Object.entries(savedPositions)) {
+      if (!player || !player.id) continue;
+      if (seenIds.has(player.id)) {
+        // skip duplicate placement for safety
+        continue;
+      }
+      seenIds.add(player.id);
+      cleanedPositions[pos] = player;
+    }
 
-    if (Object.keys(savedPositions).length > 0) setPositions(savedPositions);
-    if (savedBench.length > 0) setBench(savedBench);
+    // Remove any bench players that are already placed on the pitch
+    const filteredBench = savedBench.filter((p) => !seenIds.has(p.id));
+
+    const pitchedIds = new Set(Object.values(cleanedPositions).map((p) => p.id));
+    const benchedIds = new Set(filteredBench.map((p) => p.id));
+
+    if (Object.keys(cleanedPositions).length > 0) setPositions(cleanedPositions);
+    if (filteredBench.length > 0) setBench(filteredBench);
 
     // Use a stable string ID so no two bought players ever collide
     const newPlayers: Player[] = bought
@@ -77,21 +107,21 @@ export default function SquadManager() {
       : 0;
 
   useEffect(() => {
-    localStorage.setItem("squadRating", String(overallRating));
+    localStorage.setItem(getUserKey("squadRating"), String(overallRating));
   }, [overallRating]);
 
   useEffect(() => {
-    localStorage.setItem("pitchPositions", JSON.stringify(positions));
+    localStorage.setItem(getUserKey("pitchPositions"), JSON.stringify(positions));
   }, [positions]);
 
   useEffect(() => {
-    localStorage.setItem("benchPlayers", JSON.stringify(bench));
+    localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(bench));
   }, [bench]);
 
   const sellPlayer = (player: Player) => {
     setBench((prev) => prev.filter((p) => p.id !== player.id));
 
-    const bought = JSON.parse(localStorage.getItem("boughtPlayers") || "[]");
+    const bought = JSON.parse(localStorage.getItem(getUserKey("boughtPlayers")) || "[]");
     // Match on string ID: `bought_${p.id}` → original numeric id
     const originalId = player.id.startsWith("bought_")
       ? parseInt(player.id.replace("bought_", ""), 10)
@@ -105,11 +135,11 @@ export default function SquadManager() {
       ? bought.filter((p: any) => p.id !== originalId)
       : bought;
 
-    localStorage.setItem("boughtPlayers", JSON.stringify(updated));
+    localStorage.setItem(getUserKey("boughtPlayers"), JSON.stringify(updated));
 
     if (soldOriginal) {
-      const currentBudget = parseInt(localStorage.getItem("budget") || "0");
-      localStorage.setItem("budget", String(currentBudget + soldOriginal.price));
+      const currentBudget = parseInt(localStorage.getItem(getUserKey("budget")) || "0");
+      localStorage.setItem(getUserKey("budget"), String(currentBudget + soldOriginal.price));
       alert(`${player.name} sold for $${soldOriginal.price.toLocaleString()}!`);
     }
   };
@@ -133,6 +163,18 @@ export default function SquadManager() {
       const benchPlayer = currentBench.find((p) => p.id === source.id);
       if (!benchPlayer) return;
 
+      // Prevent placing a player who already exists on the pitch (by id or normalized name)
+      const existingOnPitch = Object.values(currentPositions || {}).some((p: any) => {
+        if (!p) return false;
+        if (p.id && p.id === benchPlayer.id) return true;
+        return normalizeName(p.name) === normalizeName(benchPlayer.name);
+      });
+
+      if (existingOnPitch) {
+        alert(`${benchPlayer.name} is already placed on the pitch.`);
+        return;
+      }
+
       const replaced = currentPositions[targetPos];
 
       setPositions((prev) => {
@@ -153,6 +195,33 @@ export default function SquadManager() {
     (p, index, self) => index === self.findIndex((t) => t.id === p.id)
   );
 
+  const cleanBenchDuplicates = () => {
+    const currentPositions = positionsRef.current || {};
+    const placedIds = new Set<string>();
+    const placedNames = new Set<string>();
+    Object.values(currentPositions).forEach((p: any) => {
+      if (!p) return;
+      if (p.id) placedIds.add(p.id);
+      if (p.name) placedNames.add(normalizeName(p.name));
+    });
+
+    const filtered = bench.filter((p) => {
+      if (!p) return false;
+      if (placedIds.has(p.id)) return false;
+      if (placedNames.has(normalizeName(p.name))) return false;
+      return true;
+    });
+
+    const removed = bench.length - filtered.length;
+    if (removed > 0) {
+      setBench(filtered);
+      localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(filtered));
+      alert(`Removed ${removed} duplicate player(s) from the bench.`);
+    } else {
+      alert("No duplicate players found on the bench.");
+    }
+  };
+
   return (
     <>
       <div className="flex justify-center mb-4">
@@ -168,6 +237,15 @@ export default function SquadManager() {
         onDropPlayer={handleDrop}
         onSelect={setSelected}
       />
+      <div className="flex items-center justify-between mb-2">
+        <div />
+        <button
+          onClick={cleanBenchDuplicates}
+          className="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded-md"
+        >
+          Clean Bench Duplicates
+        </button>
+      </div>
       <Bench players={uniqueBench} onSell={sellPlayer} />
 
       {selected && (

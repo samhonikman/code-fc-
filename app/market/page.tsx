@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getUserKey } from "@/lib/user";
 
 type Player = {
   id: number;
@@ -66,18 +67,95 @@ const initialPlayers: Player[] = [
   { id: 50, name: "Dusan Vlahovic", rating: 86, position: "ST", team: "Juventus", price: 80000000, image: "" },
 ];
 
+function generateAdditionalPlayers(startId: number, count: number): Player[] {
+  const first = ["Luca","Mason","Ethan","Noah","Oliver","Mateo","Leo","Hugo","Milan","Theo","Diego","Aaron","Samuel","Alex","Max"];
+  const last = ["Taylor","Brooks","Harris","Reed","Fox","Santos","Moreno","Khan","Silva","Costa","Nguyen","Ivanov","Petrov","Moreau","Ricci"];
+  const teams = ["Real Madrid","Manchester City","Barcelona","Bayern Munich","PSG","Liverpool","Arsenal","Juventus","AC Milan","Inter Milan","Atletico Madrid","Chelsea","Napoli","RB Leipzig","Monaco"];
+  const positions = ["GK","LB","CB","RB","CM","CDM","CAM","LW","RW","ST"];
+
+  const out: Player[] = [];
+  for (let i = 0; i < count; i++) {
+    const id = startId + i;
+    const name = `${first[Math.floor(Math.random() * first.length)]} ${last[Math.floor(Math.random() * last.length)]}`;
+    const team = teams[Math.floor(Math.random() * teams.length)];
+    const position = positions[Math.floor(Math.random() * positions.length)];
+    const rating = Math.max(60, Math.min(93, Math.round(60 + Math.random() * 33 + (position === 'GK' ? 2 : 0))));
+    const price = Math.round((rating * 1000000) + Math.random() * 5000000);
+    out.push({ id, name, rating, position, team, price, image: "" });
+  }
+  return out;
+}
+
 export default function TransferMarketPage() {
   const [search, setSearch] = useState("");
   const [budget, setBudget] = useState(0);
   const [boughtPlayers, setBoughtPlayers] = useState<Player[]>([]);
+  const [marketPlayers, setMarketPlayers] = useState<Player[] | null>(null);
+
+  const refreshMarket = async () => {
+    try {
+      const res = await fetch('/api/football-data/market');
+      if (!res.ok) throw new Error('market fetch failed');
+      const data = await res.json();
+      if (Array.isArray(data.players)) {
+        const mapped = data.players.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          rating: p.rating,
+          position: p.position,
+          team: p.team,
+          price: p.price || (p.rating * 1000000),
+          image: "",
+        } as Player));
+        setMarketPlayers(mapped);
+        try {
+          localStorage.setItem('marketPlayersCache', JSON.stringify(mapped));
+          localStorage.setItem('marketPlayersCacheUpdatedAt', String(Date.now()));
+        } catch (e) {
+          // ignore storage errors
+        }
+        return;
+      }
+    } catch (e) {
+      setMarketPlayers(null); // fallback to generated pool
+    }
+  };
 
   useEffect(() => {
-    const saved = localStorage.getItem("budget");
+    const budgetKey = getUserKey("budget");
+    const boughtKey = getUserKey("boughtPlayers");
+    const saved = localStorage.getItem(budgetKey);
     setBudget(saved ? parseInt(saved) : 1000000000);
-    setBoughtPlayers(JSON.parse(localStorage.getItem("boughtPlayers") || "[]"));
+    setBoughtPlayers(JSON.parse(localStorage.getItem(boughtKey) || "[]"));
+
+    const cacheKey = "marketPlayersCache";
+    const cacheUpdatedKey = "marketPlayersCacheUpdatedAt";
+    const ttl = 24 * 60 * 60 * 1000; // 24 hours
+
+    const tryLoadCache = () => {
+      try {
+        const raw = localStorage.getItem(cacheKey);
+        const rawUpdated = localStorage.getItem(cacheUpdatedKey);
+        if (!raw || !rawUpdated) return false;
+        const updatedAt = parseInt(rawUpdated, 10);
+        if (Number.isNaN(updatedAt)) return false;
+        if (Date.now() - updatedAt > ttl) return false;
+        const data = JSON.parse(raw);
+        if (!Array.isArray(data)) return false;
+        setMarketPlayers(data as Player[]);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    if (!tryLoadCache()) {
+      refreshMarket();
+    }
   }, []);
 
-  const filteredPlayers = initialPlayers
+  const allPool = (marketPlayers && marketPlayers.length ? marketPlayers : initialPlayers.concat(generateAdditionalPlayers(51, 120)));
+  const filteredPlayers = allPool
     .filter((player) => {
       const q = search.toLowerCase();
       return (
@@ -89,33 +167,41 @@ export default function TransferMarketPage() {
     .sort((a, b) => b.rating - a.rating);
 
   const buyPlayer = (player: Player) => {
+    const budgetKey = getUserKey("budget");
+    const boughtKey = getUserKey("boughtPlayers");
     const alreadyBought = boughtPlayers.find((p) => p.id === player.id);
     if (alreadyBought) { alert(`${player.name} is already in your squad!`); return; }
     if (budget < player.price) { alert(`Not enough money! You need $${player.price.toLocaleString()} but only have $${budget.toLocaleString()}.`); return; }
     const newBudget = budget - player.price;
     const updated = [...boughtPlayers, player];
-    localStorage.setItem("budget", String(newBudget));
-    localStorage.setItem("boughtPlayers", JSON.stringify(updated));
+    localStorage.setItem(budgetKey, String(newBudget));
+    localStorage.setItem(boughtKey, JSON.stringify(updated));
     setBudget(newBudget);
     setBoughtPlayers(updated);
     alert(`${player.name} signed! $${player.price.toLocaleString()} spent.`);
   };
 
   const sellPlayer = (player: Player) => {
+    const budgetKey = getUserKey("budget");
+    const boughtKey = getUserKey("boughtPlayers");
     const updated = boughtPlayers.filter((p) => p.id !== player.id);
     const newBudget = budget + player.price;
-    localStorage.setItem("boughtPlayers", JSON.stringify(updated));
-    localStorage.setItem("budget", String(newBudget));
+    localStorage.setItem(boughtKey, JSON.stringify(updated));
+    localStorage.setItem(budgetKey, String(newBudget));
 
     // also remove from pitch/bench saves
-    const savedPositions = JSON.parse(localStorage.getItem("pitchPositions") || "{}");
-    const savedBench: any[] = JSON.parse(localStorage.getItem("benchPlayers") || "[]");
+    const savedPositions = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}");
+    const savedBench: any[] = JSON.parse(localStorage.getItem(getUserKey("benchPlayers")) || "[]");
+    const targetStringId = `bought_${player.id}`;
     const updatedPositions = Object.fromEntries(
-      Object.entries(savedPositions).filter(([, p]: any) => p.id !== player.id + 100)
+      Object.entries(savedPositions).filter(([, p]: any) => {
+        if (!p || !p.id) return true;
+        return p.id !== targetStringId && p.id !== player.id;
+      })
     );
-    const updatedBench = savedBench.filter((p) => p.id !== player.id + 100);
-    localStorage.setItem("pitchPositions", JSON.stringify(updatedPositions));
-    localStorage.setItem("benchPlayers", JSON.stringify(updatedBench));
+    const updatedBench = savedBench.filter((p) => p && p.id !== targetStringId && p.id !== player.id);
+    localStorage.setItem(getUserKey("pitchPositions"), JSON.stringify(updatedPositions));
+    localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(updatedBench));
 
     setBudget(newBudget);
     setBoughtPlayers(updated);
@@ -130,6 +216,12 @@ export default function TransferMarketPage() {
           <span className="bg-green-700 text-white font-semibold px-4 py-2 rounded-lg">
             💰 ${budget.toLocaleString()}
           </span>
+          <button
+            onClick={refreshMarket}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            Refresh Market
+          </button>
           <Link href="/" className="bg-gray-700 hover:bg-gray-600 text-white font-semibold px-5 py-2 rounded-lg transition-colors">
             ← Back to Squad
           </Link>
