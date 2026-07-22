@@ -44,7 +44,10 @@ export default function SignInPage() {
         localStorage.removeItem('benchPlayers');
         // keep budget locally if desired but it's now in Supabase
       } else {
-        console.warn('Migration to Supabase failed', await res.text());
+        const text = await res.text();
+        const message = `Migration failed: ${res.status} ${res.statusText} ${text}`;
+        console.warn(message);
+        setMessage(message);
       }
     } catch (e) {
       console.warn('Migration error', e);
