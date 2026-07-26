@@ -8,6 +8,7 @@ import getSupabaseClient from "@/lib/supabaseClient";
 export default function SignInPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -45,9 +46,9 @@ export default function SignInPage() {
         // keep budget locally if desired but it's now in Supabase
       } else {
         const text = await res.text();
-        const message = `Migration failed: ${res.status} ${res.statusText} ${text}`;
-        console.warn(message);
-        setMessage(message);
+        const msg = `Migration failed: ${res.status} ${res.statusText} ${text}`;
+        console.warn(msg);
+        setMessage(msg);
       }
     } catch (e) {
       console.warn('Migration error', e);
@@ -57,45 +58,61 @@ export default function SignInPage() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage(null);
-    const uname = username.trim().toLowerCase();
-    if (!uname || password.length < 4) {
-      setMessage('Provide a username and a password (≥4 chars).');
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedUsername = username.trim();
+
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setMessage('Enter a valid email address.');
+      return;
+    }
+    if (password.length < 6) {
+      setMessage('Password must be at least 6 characters.');
+      return;
+    }
+    if (mode === 'signup' && !trimmedUsername) {
+      setMessage('Choose a username.');
       return;
     }
 
-    const email = `${uname}@local.dev`;
+    const supabase = getSupabaseClient();
 
     if (mode === 'signup') {
-      const supabase = getSupabaseClient();
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: { data: { username: trimmedUsername } },
+      });
       if (error) {
         setMessage(error.message);
         return;
       }
-      // signUp may not return session until email confirmed; attempt sign in
-      const signIn = await supabase.auth.signInWithPassword({ email, password });
+
+      // signUp may not return a session if email confirmation is required
+      const signIn = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
       if (signIn.error) {
-        setMessage(signIn.error.message || 'Signed up — please confirm your email.');
-      } else {
-        const userId = signIn.data.session?.user?.id || data.user?.id;
-        const token = signIn.data.session?.access_token || '';
-        if (userId) localStorage.setItem('fut_current_user', userId);
-        if (token && userId) await migrateToSupabase(token, userId);
-        router.push('/');
+        setMessage(signIn.error.message || 'Signed up — check your email to confirm your account.');
+        return;
       }
+
+      const userId = signIn.data.session?.user?.id || data.user?.id;
+      const token = signIn.data.session?.access_token || '';
+      if (userId) localStorage.setItem('fut_current_user', trimmedUsername || trimmedEmail);
+      if (token && userId) await migrateToSupabase(token, userId);
+      router.push('/');
       return;
     }
 
     // sign in
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
     if (error) {
       setMessage(error.message || 'Sign in failed');
       return;
     }
     const userId = data.session?.user?.id;
     const token = data.session?.access_token;
-    if (userId) localStorage.setItem('fut_current_user', userId);
+    const label = (data.user?.user_metadata?.username as string) || trimmedEmail;
+    if (userId) localStorage.setItem('fut_current_user', label);
     if (token && userId) await migrateToSupabase(token, userId);
     router.push('/');
   };
@@ -150,14 +167,28 @@ export default function SignInPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-300">Username</label>
+            <label className="block text-sm font-semibold text-gray-300">Email</label>
             <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500"
-              placeholder="Choose a username"
+              placeholder="you@example.com"
+              autoComplete="email"
             />
           </div>
+
+          {mode === 'signup' ? (
+            <div>
+              <label className="block text-sm font-semibold text-gray-300">Username</label>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500"
+                placeholder="Choose a display name"
+              />
+            </div>
+          ) : null}
 
           <div>
             <label className="block text-sm font-semibold text-gray-300">Password</label>
@@ -167,6 +198,7 @@ export default function SignInPage() {
               onChange={(e) => setPassword(e.target.value)}
               className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500"
               placeholder="Enter a password"
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             />
           </div>
 
