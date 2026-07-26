@@ -13,20 +13,134 @@ type OpponentTeam = {
 };
 
 const opponents: OpponentTeam[] = [
-  { name: "Real Madrid", rating: 93, color: "from-white to-gray-200", textColor: "text-gray-900", league: "PD" },
-  { name: "Manchester City", rating: 92, color: "from-sky-400 to-sky-600", textColor: "text-white", league: "PL" },
-  { name: "Barcelona", rating: 91, color: "from-blue-700 to-red-600", textColor: "text-white", league: "PD" },
-  { name: "Bayern Munich", rating: 92, color: "from-red-500 to-red-700", textColor: "text-white", league: "BL1" },
-  { name: "Paris Saint-Germain", rating: 90, color: "from-blue-900 to-red-500", textColor: "text-white", league: "FL1" },
-  { name: "Liverpool", rating: 90, color: "from-red-600 to-red-800", textColor: "text-white", league: "PL" },
-  { name: "Manchester United", rating: 89, color: "from-red-700 to-black", textColor: "text-white", league: "PL" },
-  { name: "Chelsea", rating: 88, color: "from-blue-700 to-blue-900", textColor: "text-white", league: "PL" },
-  { name: "Arsenal", rating: 89, color: "from-red-500 to-yellow-400", textColor: "text-white", league: "PL" },
-  { name: "Juventus", rating: 88, color: "from-black to-white", textColor: "text-white", league: "SA" },
-  { name: "AC Milan", rating: 87, color: "from-red-900 to-black", textColor: "text-white", league: "SA" },
-  { name: "Inter Milan", rating: 87, color: "from-blue-900 to-black", textColor: "text-white", league: "SA" },
-  { name: "Atletico Madrid", rating: 86, color: "from-red-700 to-blue-700", textColor: "text-white", league: "PD" },
+  // Premier League
+  { name: "Manchester City", rating: 92, color: "from-sky-400 to-sky-600", textColor: "text-white", league: "Premier League" },
+  { name: "Liverpool", rating: 90, color: "from-red-600 to-red-800", textColor: "text-white", league: "Premier League" },
+  { name: "Manchester United", rating: 89, color: "from-red-700 to-black", textColor: "text-white", league: "Premier League" },
+  { name: "Chelsea", rating: 88, color: "from-blue-700 to-blue-900", textColor: "text-white", league: "Premier League" },
+  { name: "Arsenal", rating: 89, color: "from-red-500 to-yellow-400", textColor: "text-white", league: "Premier League" },
+  { name: "Tottenham Hotspur", rating: 88, color: "from-slate-700 to-slate-900", textColor: "text-white", league: "Premier League" },
+  { name: "Newcastle United", rating: 88, color: "from-black to-gray-900", textColor: "text-white", league: "Premier League" },
+  { name: "Aston Villa", rating: 84, color: "from-emerald-700 to-emerald-900", textColor: "text-white", league: "Premier League" },
+  { name: "West Ham United", rating: 84, color: "from-pink-700 to-violet-900", textColor: "text-white", league: "Premier League" },
+  { name: "Brighton & Hove Albion", rating: 83, color: "from-cyan-700 to-sky-900", textColor: "text-white", league: "Premier League" },
+  { name: "Brentford", rating: 82, color: "from-orange-700 to-amber-900", textColor: "text-white", league: "Premier League" },
+  { name: "Crystal Palace", rating: 82, color: "from-red-700 to-blue-900", textColor: "text-white", league: "Premier League" },
+  { name: "Wolverhampton Wanderers", rating: 82, color: "from-yellow-700 to-amber-900", textColor: "text-white", league: "Premier League" },
+  { name: "Everton", rating: 80, color: "from-blue-700 to-indigo-900", textColor: "text-white", league: "Premier League" },
+  { name: "Luton Town", rating: 74, color: "from-orange-600 to-red-800", textColor: "text-white", league: "Premier League" },
+  { name: "Fulham", rating: 78, color: "from-white to-black", textColor: "text-gray-900", league: "Premier League" },
+  { name: "Nottingham Forest", rating: 77, color: "from-red-700 to-black", textColor: "text-white", league: "Premier League" },
+  { name: "Bournemouth", rating: 77, color: "from-red-700 to-slate-900", textColor: "text-white", league: "Premier League" },
+  { name: "Sheffield United", rating: 76, color: "from-red-700 to-black", textColor: "text-white", league: "Premier League" },
+  { name: "Burnley", rating: 75, color: "from-sky-700 to-slate-900", textColor: "text-white", league: "Premier League" },
+  
+  // La Liga
+  { name: "Real Madrid", rating: 93, color: "from-white to-gray-200", textColor: "text-gray-900", league: "La Liga" },
+  { name: "Barcelona", rating: 91, color: "from-blue-700 to-red-600", textColor: "text-white", league: "La Liga" },
+  { name: "Atletico Madrid", rating: 86, color: "from-red-700 to-blue-700", textColor: "text-white", league: "La Liga" },
+  { name: "Sevilla", rating: 82, color: "from-red-600 to-slate-900", textColor: "text-white", league: "La Liga" },
+  { name: "Real Sociedad", rating: 82, color: "from-slate-700 to-blue-900", textColor: "text-white", league: "La Liga" },
+  { name: "Villarreal", rating: 81, color: "from-yellow-700 to-amber-900", textColor: "text-white", league: "La Liga" },
+  { name: "Valencia", rating: 80, color: "from-orange-700 to-red-900", textColor: "text-white", league: "La Liga" },
+  { name: "Real Betis", rating: 80, color: "from-emerald-700 to-green-900", textColor: "text-white", league: "La Liga" },
+  { name: "Athletic Bilbao", rating: 80, color: "from-red-700 to-black", textColor: "text-white", league: "La Liga" },
+  { name: "Getafe", rating: 78, color: "from-sky-700 to-blue-900", textColor: "text-white", league: "La Liga" },
+  { name: "Celta Vigo", rating: 78, color: "from-cyan-700 to-slate-900", textColor: "text-white", league: "La Liga" },
+  { name: "Osasuna", rating: 77, color: "from-red-700 to-slate-900", textColor: "text-white", league: "La Liga" },
+  { name: "Mallorca", rating: 76, color: "from-red-700 to-orange-900", textColor: "text-white", league: "La Liga" },
+  { name: "Espanyol", rating: 76, color: "from-blue-700 to-slate-900", textColor: "text-white", league: "La Liga" },
+  { name: "Rayo Vallecano", rating: 76, color: "from-red-600 to-yellow-900", textColor: "text-white", league: "La Liga" },
+  { name: "Granada", rating: 75, color: "from-red-700 to-black", textColor: "text-white", league: "La Liga" },
+  { name: "Alaves", rating: 75, color: "from-blue-700 to-slate-900", textColor: "text-white", league: "La Liga" },
+  { name: "Cadiz", rating: 74, color: "from-yellow-700 to-amber-900", textColor: "text-white", league: "La Liga" },
+  { name: "Almeria", rating: 74, color: "from-red-700 to-white", textColor: "text-gray-900", league: "La Liga" },
+  { name: "Girona", rating: 75, color: "from-red-700 to-white", textColor: "text-gray-900", league: "La Liga" },
+  
+  // Bundesliga
+  { name: "Bayern Munich", rating: 92, color: "from-red-500 to-red-700", textColor: "text-white", league: "Bundesliga" },
+  { name: "Borussia Dortmund", rating: 89, color: "from-yellow-500 to-black", textColor: "text-black", league: "Bundesliga" },
+  { name: "RB Leipzig", rating: 88, color: "from-red-600 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "Bayer Leverkusen", rating: 87, color: "from-red-700 to-black", textColor: "text-white", league: "Bundesliga" },
+  { name: "Union Berlin", rating: 83, color: "from-red-700 to-black", textColor: "text-white", league: "Bundesliga" },
+  { name: "SC Freiburg", rating: 82, color: "from-red-700 to-black", textColor: "text-white", league: "Bundesliga" },
+  { name: "Eintracht Frankfurt", rating: 82, color: "from-red-700 to-black", textColor: "text-white", league: "Bundesliga" },
+  { name: "1899 Hoffenheim", rating: 81, color: "from-blue-700 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "Borussia M'gladbach", rating: 80, color: "from-green-700 to-black", textColor: "text-white", league: "Bundesliga" },
+  { name: "Stuttgart", rating: 79, color: "from-red-700 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "Heidenheim", rating: 78, color: "from-red-600 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "VfL Wolfsburg", rating: 78, color: "from-green-700 to-black", textColor: "text-white", league: "Bundesliga" },
+  { name: "Mainz 05", rating: 77, color: "from-red-700 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "FC Koln", rating: 77, color: "from-white to-red-700", textColor: "text-gray-900", league: "Bundesliga" },
+  { name: "Bochum", rating: 76, color: "from-blue-700 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "Augsburg", rating: 76, color: "from-red-700 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "Werder Bremen", rating: 76, color: "from-green-700 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "Darmstadt", rating: 75, color: "from-blue-700 to-white", textColor: "text-white", league: "Bundesliga" },
+  { name: "Paderborn", rating: 74, color: "from-black to-white", textColor: "text-gray-900", league: "Bundesliga" },
+  { name: "Karlsruhe", rating: 74, color: "from-cyan-700 to-black", textColor: "text-white", league: "Bundesliga" },
+  
+  // Ligue 1
+  { name: "Paris Saint-Germain", rating: 90, color: "from-blue-900 to-red-500", textColor: "text-white", league: "Ligue 1" },
+  { name: "Marseille", rating: 85, color: "from-blue-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Nice", rating: 83, color: "from-black to-red-700", textColor: "text-white", league: "Ligue 1" },
+  { name: "Lyon", rating: 83, color: "from-purple-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Monaco", rating: 84, color: "from-red-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Lens", rating: 82, color: "from-red-700 to-gold-900", textColor: "text-white", league: "Ligue 1" },
+  { name: "Rennes", rating: 82, color: "from-red-700 to-black", textColor: "text-white", league: "Ligue 1" },
+  { name: "Nantes", rating: 81, color: "from-green-700 to-yellow-900", textColor: "text-white", league: "Ligue 1" },
+  { name: "Strasbourg", rating: 80, color: "from-blue-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Lille", rating: 80, color: "from-red-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Montpellier", rating: 78, color: "from-blue-700 to-purple-900", textColor: "text-white", league: "Ligue 1" },
+  { name: "Reims", rating: 78, color: "from-red-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Toulouse", rating: 77, color: "from-purple-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Brest", rating: 77, color: "from-red-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Clermont", rating: 76, color: "from-red-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Lorient", rating: 76, color: "from-green-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Le Havre", rating: 76, color: "from-blue-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  { name: "Ajaccio", rating: 75, color: "from-red-700 to-white", textColor: "text-gray-900", league: "Ligue 1" },
+  { name: "Auxerre", rating: 75, color: "from-white to-blue-900", textColor: "text-gray-900", league: "Ligue 1" },
+  { name: "Troyes", rating: 74, color: "from-blue-700 to-white", textColor: "text-white", league: "Ligue 1" },
+  
+  // Serie A
+  { name: "Juventus", rating: 88, color: "from-black to-white", textColor: "text-white", league: "Serie A" },
+  { name: "AC Milan", rating: 87, color: "from-red-900 to-black", textColor: "text-white", league: "Serie A" },
+  { name: "Inter Milan", rating: 87, color: "from-blue-900 to-black", textColor: "text-white", league: "Serie A" },
+  { name: "Napoli", rating: 88, color: "from-blue-700 to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Roma", rating: 85, color: "from-red-700 to-yellow-900", textColor: "text-white", league: "Serie A" },
+  { name: "Lazio", rating: 84, color: "from-sky-700 to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Atalanta", rating: 84, color: "from-blue-700 to-black", textColor: "text-white", league: "Serie A" },
+  { name: "Fiorentina", rating: 82, color: "from-purple-700 to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Torino", rating: 81, color: "from-maroon-700 to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Bologna", rating: 80, color: "from-red-700 to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Sassuolo", rating: 79, color: "from-green-700 to-black", textColor: "text-white", league: "Serie A" },
+  { name: "Udinese", rating: 78, color: "from-black to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Empoli", rating: 77, color: "from-blue-700 to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Monza", rating: 76, color: "from-red-700 to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Lecce", rating: 76, color: "from-yellow-700 to-red-900", textColor: "text-white", league: "Serie A" },
+  { name: "Salernitana", rating: 75, color: "from-red-700 to-white", textColor: "text-gray-900", league: "Serie A" },
+  { name: "Hellas Verona", rating: 75, color: "from-yellow-700 to-blue-900", textColor: "text-white", league: "Serie A" },
+  { name: "Cremonese", rating: 74, color: "from-red-700 to-white", textColor: "text-gray-900", league: "Serie A" },
+  { name: "Spezia", rating: 74, color: "from-teal-700 to-white", textColor: "text-white", league: "Serie A" },
+  { name: "Sampdoria", rating: 74, color: "from-blue-700 to-white", textColor: "text-white", league: "Serie A" },
 ];
+
+const leagueOrder = ["La Liga", "Premier League", "Bundesliga", "Ligue 1", "Serie A"];
+
+const playableLeague = "Premier League";
+
+const groupedOpponents: Record<string, OpponentTeam[]> = leagueOrder.reduce((acc, league) => {
+  acc[league] = opponents.filter((opp) => opp.league === league);
+  return acc;
+}, {} as Record<string, OpponentTeam[]>);
+
+const playableOpponents = groupedOpponents[playableLeague] || [];
+
+const leagueOptions = [playableLeague, ...leagueOrder.filter((league) => league !== playableLeague)];
+
+const leagueByTeam: Record<string, string> = opponents.reduce((acc, opp) => {
+  acc[opp.name] = opp.league;
+  return acc;
+}, {} as Record<string, string>);
 
 type MatchEvent = {
   minute: number;
@@ -39,6 +153,7 @@ const homePlayers = ["Ronaldo Jr", "Messi Jr", "Neymar Jr", "De Bruyne Jr", "Mod
 
 type LeagueEntry = {
   name: string;
+  league?: string;
   played: number;
   win: number;
   draw: number;
@@ -87,6 +202,7 @@ const opponentFallbackPlayers: Record<string, string[]> = {
 const initialStandings: LeagueEntry[] = [
   {
     name: "My Squad",
+    league: playableLeague,
     played: 0,
     win: 0,
     draw: 0,
@@ -99,6 +215,7 @@ const initialStandings: LeagueEntry[] = [
   },
   ...opponents.map((opp) => ({
     name: opp.name,
+    league: opp.league,
     played: 0,
     win: 0,
     draw: 0,
@@ -285,6 +402,7 @@ export default function SimulatePage() {
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [myRating, setMyRating] = useState<number>(90);
   const [standings, setStandings] = useState<LeagueEntry[]>(initialStandings);
+  const [selectedStandingsLeague, setSelectedStandingsLeague] = useState<string>(playableLeague);
 
   const loadRosterCacheFromStorage = (): RosterCache | null => {
     if (typeof window === "undefined") return null;
@@ -355,7 +473,19 @@ export default function SimulatePage() {
       try {
         const parsed = JSON.parse(savedStandings) as LeagueEntry[];
         if (Array.isArray(parsed) && parsed.length) {
-          setStandings(parsed);
+          const migrated = parsed.map((entry) => {
+            if (entry.name === "My Squad") {
+              return { ...entry, league: playableLeague };
+            }
+            const league = leagueByTeam[entry.name] || entry.league || "";
+            return { ...entry, league };
+          });
+
+          if (migrated.some((entry) => !entry.league && entry.name !== "My Squad")) {
+            setStandings(initialStandings);
+          } else {
+            setStandings(migrated);
+          }
         }
       } catch {
         setStandings(initialStandings);
@@ -374,6 +504,22 @@ export default function SimulatePage() {
     if (typeof window === "undefined") return;
     localStorage.setItem("leagueStandings", JSON.stringify(standings));
   }, [standings]);
+
+  const filteredStandings = sortStandings(standings).filter((entry) => {
+    if (entry.name === "My Squad") {
+      return selectedStandingsLeague === playableLeague;
+    }
+    return entry.league === selectedStandingsLeague;
+  });
+
+  const displayStandings = filteredStandings.length > 0
+    ? filteredStandings
+    : sortStandings(initialStandings).filter((entry) => {
+        if (entry.name === "My Squad") {
+          return selectedStandingsLeague === playableLeague;
+        }
+        return entry.league === selectedStandingsLeague;
+      });
 
   useEffect(() => {
     if (!selectedOpponent) {
@@ -463,7 +609,7 @@ export default function SimulatePage() {
   };
 
   const generateOtherMatchday = (excludedOpponent: string) => {
-    const otherTeams = opponents
+    const otherTeams = playableOpponents
       .filter((opp) => opp.name !== excludedOpponent)
       .map((opp) => opp);
 
@@ -534,9 +680,23 @@ export default function SimulatePage() {
           </p>
 
           <div className="mb-6 overflow-x-auto rounded-3xl border border-gray-700 bg-gray-950/60 p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">League Standings</h2>
-              <span className="text-xs text-gray-400">Updated after each match</span>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">League Standings</h2>
+                <p className="text-xs text-gray-400">Your league is {playableLeague}. Switch leagues to view others.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {leagueOptions.map((league) => (
+                  <button
+                    key={league}
+                    type="button"
+                    onClick={() => setSelectedStandingsLeague(league)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${selectedStandingsLeague === league ? "bg-yellow-500 text-black" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
+                  >
+                    {league}
+                  </button>
+                ))}
+              </div>
             </div>
             <table className="min-w-full text-left text-sm text-gray-200">
               <thead>
@@ -551,7 +711,7 @@ export default function SimulatePage() {
                 </tr>
               </thead>
               <tbody>
-                {sortStandings(standings).map((entry, index) => (
+                {displayStandings.map((entry, index) => (
                   <tr key={entry.name} className="border-t border-gray-800">
                     <td className="py-3 pr-4 font-semibold text-white">{index + 1}</td>
                     <td className="py-3 pr-4">
@@ -570,17 +730,33 @@ export default function SimulatePage() {
             </table>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-            {opponents.map((opp) => (
-              <div
-                key={opp.name}
-                onClick={() => setSelectedOpponent(opp)}
-                className={`cursor-pointer rounded-2xl p-5 bg-gradient-to-br ${opp.color} ${opp.textColor} shadow-lg transition-transform hover:scale-105 border-4 ${selectedOpponent?.name === opp.name ? "border-yellow-400" : "border-transparent"}`}
-              >
-                <div className="text-xl font-bold">{opp.name}</div>
-                <div className="text-sm mt-1 opacity-80">Rating: {opp.rating}</div>
+          <div className="space-y-6 mb-8">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-lg font-semibold">{playableLeague}</h3>
+                  <p className="text-xs text-gray-400">Only teams from your league are available for matches.</p>
+                </div>
+                <span className="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300">
+                  {playableOpponents.length} teams
+                </span>
               </div>
-            ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {playableOpponents.map((opp) => (
+                  <div
+                    key={opp.name}
+                    onClick={() => setSelectedOpponent(opp)}
+                    className={`cursor-pointer rounded-2xl p-5 bg-gradient-to-br ${opp.color} ${opp.textColor} shadow-lg transition-transform hover:scale-105 border-4 ${selectedOpponent?.name === opp.name ? "border-yellow-400" : "border-transparent"}`}
+                  >
+                    <div className="text-xl font-bold">{opp.name}</div>
+                    <div className="text-sm mt-1 opacity-80">Rating: {opp.rating}</div>
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-black/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-gray-200">
+                      {opp.league}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           {selectedOpponent && (
