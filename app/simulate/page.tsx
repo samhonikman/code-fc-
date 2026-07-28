@@ -172,8 +172,6 @@ const generateSeasonFixtures = (): string[] => {
 };
 
 
-const homePlayers = ["Ronaldo Jr", "Messi Jr", "Neymar Jr", "De Bruyne Jr", "Modric Jr", "Kante Jr"];
-
 type LeagueEntry = {
   name: string;
   league?: string;
@@ -424,6 +422,7 @@ export default function SimulatePage() {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [myRating, setMyRating] = useState<number>(90);
+  const [myPlayers, setMyPlayers] = useState<string[]>([]);
   const [standings, setStandings] = useState<LeagueEntry[]>(initialStandings);
   const [selectedStandingsLeague, setSelectedStandingsLeague] = useState<string>(playableLeague);
   const [seasonWeek, setSeasonWeek] = useState<number>(1);
@@ -506,6 +505,12 @@ export default function SimulatePage() {
 
     const savedRating = localStorage.getItem(getUserKey("squadRating"));
     if (savedRating) setMyRating(parseInt(savedRating, 10));
+
+    const savedPitchPositions = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}") as Record<string, any>;
+    const loadedPlayers = Object.values(savedPitchPositions || {})
+      .filter((player: any) => player && player.name)
+      .map((player: any) => player.name);
+    setMyPlayers(loadedPlayers);
 
     // Load season state
     const savedSeasonWeek = localStorage.getItem("seasonWeek");
@@ -705,8 +710,9 @@ export default function SimulatePage() {
       : createRosterWithStats(opponentToUse.name, opponentToUse.rating, opponentFallbackPlayers[opponentToUse.name] || []);
 
     const opponentRosterNames = opponentRosterObjects.map((p) => p.name);
+    const homeRosterNames = myPlayers.slice(0, 11);
 
-    const mainMatch = simulateMatch(myRating, opponentToUse.rating, homePlayers, opponentRosterNames);
+    const mainMatch = simulateMatch(myRating, opponentToUse.rating, homeRosterNames, opponentRosterNames);
     const otherMatches = generateOtherMatchday(opponentToUse.name);
 
     updateStandings([
@@ -819,18 +825,26 @@ export default function SimulatePage() {
               </div>
               
               {currentWeekOpponent ? (
-                <div className="grid grid-cols-1 gap-4">
-                  <div
-                    key={currentWeekOpponent.name}
-                    className={`rounded-2xl p-6 bg-gradient-to-br ${currentWeekOpponent.color} ${currentWeekOpponent.textColor} shadow-xl border-4 border-white/30`}
-                  >
-                    <div className="text-2xl font-bold">{currentWeekOpponent.name}</div>
-                    <div className="text-sm mt-2 opacity-90">Rating: {currentWeekOpponent.rating}</div>
-                    <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-black/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]">
-                      {currentWeekOpponent.league}
+                <>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div
+                      key={currentWeekOpponent.name}
+                      className={`rounded-2xl p-6 bg-gradient-to-br ${currentWeekOpponent.color} ${currentWeekOpponent.textColor} shadow-xl border-4 border-white/30`}
+                    >
+                      <div className="text-2xl font-bold">{currentWeekOpponent.name}</div>
+                      <div className="text-sm mt-2 opacity-90">Rating: {currentWeekOpponent.rating}</div>
+                      <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-black/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]">
+                        {currentWeekOpponent.league}
+                      </div>
                     </div>
                   </div>
-                </div>
+                  {myPlayers.length < 11 && (
+                    <div className="mt-4 rounded-2xl border border-orange-500 bg-orange-950/20 p-4 text-orange-300">
+                      You need 11 players on the pitch to play. Current: {myPlayers.length}.
+                      Open Squad to add more players before the next match.
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="rounded-2xl p-6 bg-gray-800 border-2 border-gray-700 text-center">
                   <p className="text-green-400 font-bold text-lg">Season Complete! 🎉</p>
@@ -908,12 +922,14 @@ export default function SimulatePage() {
 
           <button
             onClick={() => currentWeekOpponent && playMatch()}
-            disabled={!currentWeekOpponent || rosterLoading || playedWeeks.has(seasonWeek)}
+            disabled={!currentWeekOpponent || rosterLoading || playedWeeks.has(seasonWeek) || myPlayers.length < 11}
             className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold text-xl py-4 rounded-xl transition-colors"
           >
             {currentWeekOpponent
               ? playedWeeks.has(seasonWeek)
                 ? `✓ Week ${seasonWeek} Played - Advance to Week ${seasonWeek + 1}`
+                : myPlayers.length < 11
+                ? "Need 11 players to play"
                 : rosterLoading
                 ? "Loading roster..."
                 : `Play Week ${seasonWeek} vs ${currentWeekOpponent.name}`
