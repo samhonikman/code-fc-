@@ -170,7 +170,8 @@ export default function TransferMarketPage() {
 
   const allPool = (marketPlayers && marketPlayers.length ? marketPlayers : initialPlayers.concat(generateAdditionalPlayers(51, 120)));
   const filteredPlayers = allPool
-    .filter((player) => {
+    .map((player, index) => ({ player, index }))
+    .filter(({ player }) => {
       const q = search.toLowerCase();
       return (
         player.name.toLowerCase().includes(q) ||
@@ -178,7 +179,11 @@ export default function TransferMarketPage() {
         player.position.toLowerCase().includes(q)
       );
     })
-    .sort((a, b) => b.rating - a.rating);
+    .sort((a, b) => {
+      const ratingDiff = b.player.rating - a.player.rating;
+      return ratingDiff !== 0 ? ratingDiff : a.index - b.index;
+    })
+    .map(({ player }) => player);
 
   const buyPlayer = (player: Player) => {
     const budgetKey = getUserKey("budget");
