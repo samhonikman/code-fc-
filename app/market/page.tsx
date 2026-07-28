@@ -192,6 +192,7 @@ export default function TransferMarketPage() {
     localStorage.setItem(boughtKey, JSON.stringify(updated));
     setBudget(newBudget);
     setBoughtPlayers(updated);
+    setMarketPlayers((current) => current ? current.filter((p) => p.id !== player.id) : current);
     alert(`${player.name} signed! $${player.price.toLocaleString()} spent.`);
   };
 
