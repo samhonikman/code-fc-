@@ -698,6 +698,8 @@ export default function SimulatePage() {
   const playMatch = () => {
     if (!currentWeekOpponent) return;
     const opponentToUse = currentWeekOpponent;
+    setSelectedOpponent(opponentToUse);
+
     const opponentRosterObjects = opponentPlayers.length
       ? opponentPlayers
       : createRosterWithStats(opponentToUse.name, opponentToUse.rating, opponentFallbackPlayers[opponentToUse.name] || []);
@@ -722,7 +724,7 @@ export default function SimulatePage() {
     const newPlayedWeeks = new Set(playedWeeks);
     newPlayedWeeks.add(seasonWeek);
     setPlayedWeeks(newPlayedWeeks);
-    
+
     if (seasonWeek < seasonFixtures.length) {
       setSeasonWeek(seasonWeek + 1);
     }
@@ -909,13 +911,13 @@ export default function SimulatePage() {
             disabled={!currentWeekOpponent || rosterLoading || playedWeeks.has(seasonWeek)}
             className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold text-xl py-4 rounded-xl transition-colors"
           >
-            {!currentWeekOpponent
-              ? "Season Complete!"
-              : playedWeeks.has(seasonWeek)
-              ? `✓ Week ${seasonWeek} Played - Advance to Week ${seasonWeek + 1}`
-              : rosterLoading
-              ? "Loading roster..."
-              : `Play Week ${seasonWeek} vs ${currentWeekOpponent.name}`}
+            {currentWeekOpponent
+              ? playedWeeks.has(seasonWeek)
+                ? `✓ Week ${seasonWeek} Played - Advance to Week ${seasonWeek + 1}`
+                : rosterLoading
+                ? "Loading roster..."
+                : `Play Week ${seasonWeek} vs ${currentWeekOpponent.name}`
+              : "Season Complete!"}
           </button>
         </>
       ) : (
