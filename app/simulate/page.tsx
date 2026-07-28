@@ -981,7 +981,7 @@ export default function SimulatePage() {
             onClick={reset}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg py-3 rounded-xl transition-colors"
           >
-            Play Again
+            Next Week
           </button>
         </>
       )}
