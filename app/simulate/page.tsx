@@ -149,6 +149,29 @@ type MatchEvent = {
   player: string;
 };
 
+type SeasonState = {
+  week: number;
+  fixtures: string[];
+  played: Set<number>;
+};
+
+const generateSeasonFixtures = (): string[] => {
+  const teams = playableOpponents.map((t) => t.name).filter((name) => name !== "My Squad");
+  const allFixtures: string[] = [];
+  
+  // Create a shuffled list of all teams twice (38 weeks for 20 teams)
+  const fixtureList = [...teams, ...teams];
+  
+  // Shuffle the fixture list randomly
+  for (let i = fixtureList.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [fixtureList[i], fixtureList[j]] = [fixtureList[j], fixtureList[i]];
+  }
+  
+  return fixtureList;
+};
+
+
 const homePlayers = ["Ronaldo Jr", "Messi Jr", "Neymar Jr", "De Bruyne Jr", "Modric Jr", "Kante Jr"];
 
 type LeagueEntry = {
@@ -403,6 +426,9 @@ export default function SimulatePage() {
   const [myRating, setMyRating] = useState<number>(90);
   const [standings, setStandings] = useState<LeagueEntry[]>(initialStandings);
   const [selectedStandingsLeague, setSelectedStandingsLeague] = useState<string>(playableLeague);
+  const [seasonWeek, setSeasonWeek] = useState<number>(1);
+  const [seasonFixtures, setSeasonFixtures] = useState<string[]>([]);
+  const [playedWeeks, setPlayedWeeks] = useState<Set<number>>(new Set());
 
   const loadRosterCacheFromStorage = (): RosterCache | null => {
     if (typeof window === "undefined") return null;
@@ -462,30 +488,56 @@ export default function SimulatePage() {
     setRosterLoading(false);
   };
 
+  const mergeStandingsWithInitial = (parsed: LeagueEntry[]) => {
+    const parsedMap = new Map(parsed.map((entry) => [entry.name, entry]));
+    return initialStandings.map((initial) => {
+      const saved = parsedMap.get(initial.name);
+      if (!saved) return initial;
+      return {
+        ...initial,
+        ...saved,
+        league: initial.league || saved.league || "",
+      };
+    });
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const savedRating = localStorage.getItem(getUserKey("squadRating"));
     if (savedRating) setMyRating(parseInt(savedRating, 10));
 
+    // Load season state
+    const savedSeasonWeek = localStorage.getItem("seasonWeek");
+    const savedSeasonFixtures = localStorage.getItem("seasonFixtures");
+    const savedPlayedWeeks = localStorage.getItem("playedWeeks");
+
+    if (savedSeasonFixtures) {
+      try {
+        setSeasonFixtures(JSON.parse(savedSeasonFixtures));
+        setSeasonWeek(savedSeasonWeek ? parseInt(savedSeasonWeek, 10) : 1);
+        setPlayedWeeks(new Set(JSON.parse(savedPlayedWeeks || "[]")));
+      } catch {
+        const newFixtures = generateSeasonFixtures();
+        setSeasonFixtures(newFixtures);
+        setSeasonWeek(1);
+        setPlayedWeeks(new Set());
+      }
+    } else {
+      const newFixtures = generateSeasonFixtures();
+      setSeasonFixtures(newFixtures);
+      setSeasonWeek(1);
+      setPlayedWeeks(new Set());
+    }
+
     const savedStandings = localStorage.getItem("leagueStandings");
     if (savedStandings) {
       try {
         const parsed = JSON.parse(savedStandings) as LeagueEntry[];
         if (Array.isArray(parsed) && parsed.length) {
-          const migrated = parsed.map((entry) => {
-            if (entry.name === "My Squad") {
-              return { ...entry, league: playableLeague };
-            }
-            const league = leagueByTeam[entry.name] || entry.league || "";
-            return { ...entry, league };
-          });
-
-          if (migrated.some((entry) => !entry.league && entry.name !== "My Squad")) {
-            setStandings(initialStandings);
-          } else {
-            setStandings(migrated);
-          }
+          const merged = mergeStandingsWithInitial(parsed);
+          const invalidLeagueData = merged.some((entry) => entry.name !== "My Squad" && !entry.league);
+          setStandings(invalidLeagueData ? initialStandings : merged);
         }
       } catch {
         setStandings(initialStandings);
@@ -499,6 +551,13 @@ export default function SimulatePage() {
       fetchAllRosters();
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("seasonWeek", seasonWeek.toString());
+    localStorage.setItem("seasonFixtures", JSON.stringify(seasonFixtures));
+    localStorage.setItem("playedWeeks", JSON.stringify(Array.from(playedWeeks)));
+  }, [seasonWeek, seasonFixtures, playedWeeks]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -521,8 +580,11 @@ export default function SimulatePage() {
         return entry.league === selectedStandingsLeague;
       });
 
+  const currentWeekOpponentName = seasonFixtures[seasonWeek - 1] || null;
+  const currentWeekOpponent = playableOpponents.find((opp) => opp.name === currentWeekOpponentName) || null;
+
   useEffect(() => {
-    if (!selectedOpponent) {
+    if (!currentWeekOpponent) {
       setOpponentPlayers([]);
       return;
     }
@@ -542,15 +604,15 @@ export default function SimulatePage() {
     };
 
     const userNames = getUserPlayerNames();
-    const roster = rosterCache[selectedOpponent.name] || createRosterWithStats(selectedOpponent.name, selectedOpponent.rating, opponentFallbackPlayers[selectedOpponent.name] || []);
+    const roster = rosterCache[currentWeekOpponent.name] || createRosterWithStats(currentWeekOpponent.name, currentWeekOpponent.rating, opponentFallbackPlayers[currentWeekOpponent.name] || []);
 
     // Filter out any opponent names that collide with user players; use normalized comparison
     const filtered = roster.filter((p) => !userNames.has(normalizeName(p.name)));
     // ensure full roster size (18) and starters
-    const finalRosterObjects = filtered.length >= 18 ? filtered : createRosterWithStats(selectedOpponent.name, selectedOpponent.rating, filtered.map((p) => p.name));
+    const finalRosterObjects = filtered.length >= 18 ? filtered : createRosterWithStats(currentWeekOpponent.name, currentWeekOpponent.rating, filtered.map((p) => p.name));
 
     setOpponentPlayers(finalRosterObjects);
-  }, [selectedOpponent, rosterCache]);
+  }, [currentWeekOpponent, rosterCache]);
 
   const getRosterForTeam = (teamName: string) => {
     const entry = rosterCache[teamName];
@@ -634,20 +696,21 @@ export default function SimulatePage() {
   };
 
   const playMatch = () => {
-    if (!selectedOpponent) return;
+    if (!currentWeekOpponent) return;
+    const opponentToUse = currentWeekOpponent;
     const opponentRosterObjects = opponentPlayers.length
       ? opponentPlayers
-      : createRosterWithStats(selectedOpponent.name, selectedOpponent.rating, opponentFallbackPlayers[selectedOpponent.name] || []);
+      : createRosterWithStats(opponentToUse.name, opponentToUse.rating, opponentFallbackPlayers[opponentToUse.name] || []);
 
     const opponentRosterNames = opponentRosterObjects.map((p) => p.name);
 
-    const mainMatch = simulateMatch(myRating, selectedOpponent.rating, homePlayers, opponentRosterNames);
-    const otherMatches = generateOtherMatchday(selectedOpponent.name);
+    const mainMatch = simulateMatch(myRating, opponentToUse.rating, homePlayers, opponentRosterNames);
+    const otherMatches = generateOtherMatchday(opponentToUse.name);
 
     updateStandings([
       {
         home: "My Squad",
-        away: selectedOpponent.name,
+        away: opponentToUse.name,
         homeGoals: mainMatch.homeGoals,
         awayGoals: mainMatch.awayGoals,
         events: mainMatch.events,
@@ -655,13 +718,21 @@ export default function SimulatePage() {
       ...otherMatches,
     ]);
 
+    // Mark this week as played and advance to next week
+    const newPlayedWeeks = new Set(playedWeeks);
+    newPlayedWeeks.add(seasonWeek);
+    setPlayedWeeks(newPlayedWeeks);
+    
+    if (seasonWeek < seasonFixtures.length) {
+      setSeasonWeek(seasonWeek + 1);
+    }
+
     setResult(mainMatch);
     setOtherMatchdayResults(otherMatches);
   };
 
   const reset = () => {
     setResult(null);
-    setSelectedOpponent(null);
   };
 
   return (
@@ -676,7 +747,7 @@ export default function SimulatePage() {
       {!result ? (
         <>
           <p className="text-gray-400 mb-6">
-            Your squad rating: <span className="text-yellow-400 font-bold">{myRating}</span> — pick an opponent.
+            Your squad rating: <span className="text-yellow-400 font-bold">{myRating}</span> — Season starts now.
           </p>
 
           <div className="mb-6 overflow-x-auto rounded-3xl border border-gray-700 bg-gray-950/60 p-4">
@@ -732,34 +803,42 @@ export default function SimulatePage() {
 
           <div className="space-y-6 mb-8">
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold">{playableLeague}</h3>
-                  <p className="text-xs text-gray-400">Only teams from your league are available for matches.</p>
+                  <h3 className="text-lg font-semibold">This Week's Fixture</h3>
+                  <p className="text-xs text-gray-400">Your opponent has been chosen. Play to advance.</p>
                 </div>
-                <span className="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300">
-                  {playableOpponents.length} teams
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-yellow-500 px-4 py-2 text-sm font-bold text-black">Week {seasonWeek}/{seasonFixtures.length}</span>
+                  {playedWeeks.has(seasonWeek) && (
+                    <span className="rounded-full bg-green-600 px-3 py-2 text-xs font-semibold">✓ Played</span>
+                  )}
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {playableOpponents.map((opp) => (
+              
+              {currentWeekOpponent ? (
+                <div className="grid grid-cols-1 gap-4">
                   <div
-                    key={opp.name}
-                    onClick={() => setSelectedOpponent(opp)}
-                    className={`cursor-pointer rounded-2xl p-5 bg-gradient-to-br ${opp.color} ${opp.textColor} shadow-lg transition-transform hover:scale-105 border-4 ${selectedOpponent?.name === opp.name ? "border-yellow-400" : "border-transparent"}`}
+                    key={currentWeekOpponent.name}
+                    className={`rounded-2xl p-6 bg-gradient-to-br ${currentWeekOpponent.color} ${currentWeekOpponent.textColor} shadow-xl border-4 border-white/30`}
                   >
-                    <div className="text-xl font-bold">{opp.name}</div>
-                    <div className="text-sm mt-1 opacity-80">Rating: {opp.rating}</div>
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-black/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-gray-200">
-                      {opp.league}
+                    <div className="text-2xl font-bold">{currentWeekOpponent.name}</div>
+                    <div className="text-sm mt-2 opacity-90">Rating: {currentWeekOpponent.rating}</div>
+                    <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-black/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]">
+                      {currentWeekOpponent.league}
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl p-6 bg-gray-800 border-2 border-gray-700 text-center">
+                  <p className="text-green-400 font-bold text-lg">Season Complete! 🎉</p>
+                  <p className="text-gray-300 text-sm mt-2">All 38 weeks have been played.</p>
+                </div>
+              )}
             </div>
           </div>
 
-          {selectedOpponent && (
+          {currentWeekOpponent && (
             <div className="mb-4">
               <div className="mb-2 text-sm text-gray-300">
                 {rosterLoading && "Loading opponent roster data..."}
@@ -771,7 +850,7 @@ export default function SimulatePage() {
                   {!rosterLoading && opponentPlayers.length > 0 && (
                     <div className="rounded-xl bg-gray-800/60 p-3 border border-gray-700">
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-semibold">{selectedOpponent.name} — Roster</h3>
+                        <h3 className="text-sm font-semibold">{currentWeekOpponent.name} — Roster</h3>
                         <span className="text-xs text-gray-400">{opponentPlayers.length} players</span>
                       </div>
                       <div className="mb-3">
@@ -789,7 +868,7 @@ export default function SimulatePage() {
                       <h4 className="text-xs text-gray-400 mb-2">Full Squad</h4>
                       <ul className="grid grid-cols-2 gap-2 text-sm text-gray-200">
                         {opponentPlayers.map((p, i) => (
-                          <li key={`${selectedOpponent.name}-player-${i}`} className="px-2 py-1 rounded-md bg-gray-900/40">
+                          <li key={`${currentWeekOpponent.name}-player-${i}`} className="px-2 py-1 rounded-md bg-gray-900/40">
                             <div className="flex items-center justify-between">
                               <span className="truncate">{p.name} <span className="text-xs text-gray-400">— {p.position}</span></span>
                               <span className="text-yellow-300 ml-2">{p.rating}</span>
@@ -826,15 +905,17 @@ export default function SimulatePage() {
           </div>
 
           <button
-            onClick={playMatch}
-            disabled={!selectedOpponent || rosterLoading}
+            onClick={() => currentWeekOpponent && playMatch()}
+            disabled={!currentWeekOpponent || rosterLoading || playedWeeks.has(seasonWeek)}
             className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold text-xl py-4 rounded-xl transition-colors"
           >
-            {selectedOpponent
-              ? rosterLoading
-                ? `Loading roster...`
-                : `▶ Play vs ${selectedOpponent.name}`
-              : "Select an opponent first"}
+            {!currentWeekOpponent
+              ? "Season Complete!"
+              : playedWeeks.has(seasonWeek)
+              ? `✓ Week ${seasonWeek} Played - Advance to Week ${seasonWeek + 1}`
+              : rosterLoading
+              ? "Loading roster..."
+              : `Play Week ${seasonWeek} vs ${currentWeekOpponent.name}`}
           </button>
         </>
       ) : (
