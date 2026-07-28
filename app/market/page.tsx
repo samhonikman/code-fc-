@@ -92,6 +92,20 @@ export default function TransferMarketPage() {
   const [boughtPlayers, setBoughtPlayers] = useState<Player[]>([]);
   const [marketPlayers, setMarketPlayers] = useState<Player[] | null>(null);
 
+  const randomizeMarket = () => {
+    const pool = initialPlayers.concat(generateAdditionalPlayers(51, 120));
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const unique = Array.from(new Map(shuffled.map((player) => [player.id, player])).values());
+    const selection = unique.slice(0, 24);
+    setMarketPlayers(selection);
+    try {
+      localStorage.setItem('marketPlayersCache', JSON.stringify(selection));
+      localStorage.setItem('marketPlayersCacheUpdatedAt', String(Date.now()));
+    } catch (e) {
+      // ignore storage errors
+    }
+  };
+
   const refreshMarket = async () => {
     try {
       const res = await fetch('/api/football-data/market');
@@ -117,7 +131,7 @@ export default function TransferMarketPage() {
         return;
       }
     } catch (e) {
-      setMarketPlayers(null); // fallback to generated pool
+      randomizeMarket();
     }
   };
 
