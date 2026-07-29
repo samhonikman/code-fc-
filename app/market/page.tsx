@@ -138,8 +138,11 @@ export default function TransferMarketPage() {
   useEffect(() => {
     const budgetKey = getUserKey("budget");
     const boughtKey = getUserKey("boughtPlayers");
-    const saved = localStorage.getItem(budgetKey);
-    setBudget(saved ? parseInt(saved) : 1000000000);
+    const minBudget = 10000000000;
+    const savedBudget = parseInt(localStorage.getItem(budgetKey) || "0", 10) || 0;
+    const normalizedBudget = Math.max(savedBudget, minBudget);
+    localStorage.setItem(budgetKey, String(normalizedBudget));
+    setBudget(normalizedBudget);
     setBoughtPlayers(JSON.parse(localStorage.getItem(boughtKey) || "[]"));
 
     const cacheKey = "marketPlayersCache";
@@ -228,7 +231,27 @@ export default function TransferMarketPage() {
     alert(`${player.name} sold for $${player.price.toLocaleString()}!`);
   };
 
-  // Debug helper: fill pitch with random players, deducting cost from budget
+  const clearAllSquadPlayers = () => {
+    const budgetKey = getUserKey("budget");
+    const boughtKey = getUserKey("boughtPlayers");
+    const currentBought = JSON.parse(localStorage.getItem(boughtKey) || "[]") as Player[];
+
+    const refund = currentBought.reduce((sum, p) => sum + (p.price || 0), 0);
+    const currentBudget = parseInt(localStorage.getItem(budgetKey) || "0", 10) || 0;
+    const newBudget = currentBudget + refund;
+
+    localStorage.setItem(boughtKey, JSON.stringify([]));
+    localStorage.setItem(getUserKey("pitchPositions"), JSON.stringify({}));
+    localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify([]));
+    localStorage.setItem(budgetKey, String(newBudget));
+
+    setBoughtPlayers([]);
+    setBudget(newBudget);
+
+    alert(`Squad cleared. Refunded $${refund.toLocaleString()}.`);
+  };
+
+  // Debug helper: fill pitch with position-correct random players, deducting cost from budget
   const fillDebugSquad = () => {
     const budgetKey = getUserKey("budget");
     const boughtKey = getUserKey("boughtPlayers");
@@ -236,11 +259,56 @@ export default function TransferMarketPage() {
     const pool = (marketPlayers && marketPlayers.length) ? marketPlayers.slice() : initialPlayers.concat(generateAdditionalPlayers(51, 120));
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
 
-    // pick 11 unique players not already owned
+    // pick 11 unique players by required formation slots
     const avail = shuffled.filter((p) => !boughtPlayers.find((b) => b.id === p.id));
-    const selected = avail.slice(0, 11);
-    if (selected.length === 0) {
-      alert("No available players to fill the squad.");
+    const positionGroups: Record<string, Player[]> = {
+      GK: avail.filter((p) => p.position === "GK"),
+      LB: avail.filter((p) => ["LB", "LWB"].includes(p.position)),
+      RB: avail.filter((p) => ["RB", "RWB"].includes(p.position)),
+      CB: avail.filter((p) => p.position === "CB"),
+      CM: avail.filter((p) => ["CM", "CDM", "CAM"].includes(p.position)),
+      LW: avail.filter((p) => ["LW", "LM"].includes(p.position)),
+      RW: avail.filter((p) => ["RW", "RM"].includes(p.position)),
+      ST: avail.filter((p) => ["ST", "CF"].includes(p.position)),
+    };
+
+    const takeOne = (arr: Player[], used: Set<number>) => {
+      const pick = arr.find((p) => !used.has(p.id));
+      if (!pick) return null;
+      used.add(pick.id);
+      return pick;
+    };
+
+    const used = new Set<number>();
+    // These slot keys must match `components/Pitch.tsx` exactly.
+    const slotToPlayer: Array<{ slot: string; player: Player | null }> = [
+      { slot: "GK", player: takeOne(positionGroups.GK, used) },
+      { slot: "LB", player: takeOne(positionGroups.LB, used) },
+      { slot: "CB1", player: takeOne(positionGroups.CB, used) },
+      { slot: "CB2", player: takeOne(positionGroups.CB, used) },
+      { slot: "RB", player: takeOne(positionGroups.RB, used) },
+      { slot: "CM1", player: takeOne(positionGroups.CM, used) },
+      { slot: "CM2", player: takeOne(positionGroups.CM, used) },
+      { slot: "CM3", player: takeOne(positionGroups.CM, used) },
+      { slot: "LW", player: takeOne(positionGroups.LW, used) },
+      { slot: "RW", player: takeOne(positionGroups.RW, used) },
+      { slot: "ST", player: takeOne(positionGroups.ST, used) },
+    ];
+
+    // Fallback fill if any exact position is missing
+    for (const slotEntry of slotToPlayer) {
+      if (!slotEntry.player) {
+        const fallback = avail.find((p) => !used.has(p.id));
+        if (fallback) {
+          used.add(fallback.id);
+          slotEntry.player = fallback;
+        }
+      }
+    }
+
+    const selected = slotToPlayer.map((s) => s.player).filter(Boolean) as Player[];
+    if (selected.length < 11) {
+      alert("Not enough available players to fill all 11 positions.");
       return;
     }
 
@@ -254,16 +322,20 @@ export default function TransferMarketPage() {
     localStorage.setItem(budgetKey, String(newBudget));
 
     // create pitch positions mapping (11 slots)
-    const slots = ["GK","LB","CB","CB","RB","LM","CM","CM","RM","ST","ST"];
     const pitchPositions: Record<string, any> = {};
-    selected.forEach((p, i) => {
-      const slot = slots[i] || `SUB${i}`;
+    slotToPlayer.forEach((entry, i) => {
+      const p = entry.player as Player;
+      if (!p) return;
+      const slot = entry.slot || `SUB${i}`;
       pitchPositions[slot] = { id: `bought_${p.id}`, name: p.name, position: p.position, rating: p.rating };
     });
     localStorage.setItem(getUserKey("pitchPositions"), JSON.stringify(pitchPositions));
 
-    // bench: next 7 available players
-    const benchPlayers = avail.slice(11, 18).map((p) => ({ id: `bought_${p.id}`, name: p.name, position: p.position, rating: p.rating }));
+    // bench: next 7 available players that were not used in starting XI
+    const benchPlayers = avail
+      .filter((p) => !used.has(p.id))
+      .slice(0, 7)
+      .map((p) => ({ id: `bought_${p.id}`, name: p.name, position: p.position, rating: p.rating }));
     localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(benchPlayers));
 
     // remove selected from visible market list to avoid immediate duplicates
@@ -295,6 +367,12 @@ export default function TransferMarketPage() {
             className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
           >
             Refresh Market
+          </button>
+          <button
+            onClick={clearAllSquadPlayers}
+            className="bg-red-700 hover:bg-red-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            Clear Squad
           </button>
           <Link href="/" className="bg-gray-700 hover:bg-gray-600 text-white font-semibold px-5 py-2 rounded-lg transition-colors">
             ← Back to Squad
