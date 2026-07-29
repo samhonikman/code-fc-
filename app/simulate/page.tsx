@@ -308,7 +308,7 @@ type LeagueMatch = {
   events: MatchEvent[];
 };
 
-function simulateMatch(homeRating: number, awayRating: number, homeRoster: string[], awayRoster: string[]): MatchResult {
+function simulateMatch(homeRating: number, awayRating: number, homeRoster: any[], awayRoster: any[]): MatchResult {
   const events: MatchEvent[] = [];
   const minutes = Array.from({ length: 10 }, () => Math.floor(Math.random() * 90) + 1).sort((a, b) => a - b);
 
@@ -318,49 +318,61 @@ function simulateMatch(homeRating: number, awayRating: number, homeRoster: strin
   const ratingDiff = homeRating - awayRating;
   const homeWinChance = 0.5 + ratingDiff * 0.03;
 
+  const pickRating = (entry: any, fallback: number) => {
+    if (!entry) return fallback;
+    if (typeof entry === "object" && entry.rating && typeof entry.rating === "number") return entry.rating;
+    return fallback;
+  };
+
+  const pickName = (entry: any) => {
+    if (!entry) return "Opponent";
+    return typeof entry === "string" ? entry : entry.name || "Opponent";
+  };
+
+  const attackerPositions = ["ST", "CF", "LW", "RW", "CAM", "AM"];
+  const defenderPositions = ["CB", "LB", "RB", "LWB", "RWB", "GK"];
+
+  const pickPlayer = (roster: any[], prefer: string[]) => {
+    if (!roster || roster.length === 0) return null;
+    const objs = roster.filter((r) => typeof r === "object");
+    if (objs.length > 0) {
+      const byPos = objs.filter((p) => p.position && prefer.includes((p.position || "").toUpperCase()));
+      if (byPos.length > 0) return randomItem(byPos);
+      return randomItem(objs);
+    }
+    return randomItem(roster);
+  };
+
   for (const minute of minutes) {
     const isHome = Math.random() < homeWinChance;
     const roll = Math.random();
-    const homePlayer = randomItem(homeRoster.length ? homeRoster : ["Opponent"]);
-    const awayPlayer = randomItem(awayRoster.length ? awayRoster : ["Opponent"]);
 
-    if (roll < 0.35) {
+    const attackingRoster = isHome ? homeRoster : awayRoster;
+    const defendingRoster = isHome ? awayRoster : homeRoster;
+
+    const attacker = pickPlayer(attackingRoster, attackerPositions);
+    const defender = pickPlayer(defendingRoster, defenderPositions) || randomItem(defendingRoster.length ? defendingRoster : [null]);
+
+    const attackerRating = pickRating(attacker, isHome ? homeRating : awayRating);
+    const defenderRating = pickRating(defender, isHome ? awayRating : homeRating);
+
+    const baseGoal = 0.35;
+    const playerDiff = attackerRating - defenderRating;
+    const modifier = Math.max(0.5, Math.min(1.8, 1 + playerDiff / 50));
+    const adjustedGoal = baseGoal * modifier;
+
+    if (roll < adjustedGoal) {
       if (isHome) homeGoals++;
       else awayGoals++;
-      events.push({
-        minute,
-        team: isHome ? "home" : "away",
-        type: "goal",
-        player: isHome ? homePlayer : awayPlayer,
-      });
-    } else if (roll < 0.6) {
-      events.push({
-        minute,
-        team: isHome ? "home" : "away",
-        type: "miss",
-        player: isHome ? homePlayer : awayPlayer,
-      });
-    } else if (roll < 0.8) {
-      events.push({
-        minute,
-        team: isHome ? "away" : "home",
-        type: "save",
-        player: isHome ? awayPlayer : homePlayer,
-      });
-    } else if (roll < 0.95) {
-      events.push({
-        minute,
-        team: isHome ? "away" : "home",
-        type: "yellow",
-        player: isHome ? awayPlayer : homePlayer,
-      });
+      events.push({ minute, team: isHome ? "home" : "away", type: "goal", player: isHome ? pickName(attacker) : pickName(attacker) });
+    } else if (roll < adjustedGoal + 0.25) {
+      events.push({ minute, team: isHome ? "home" : "away", type: "miss", player: isHome ? pickName(attacker) : pickName(attacker) });
+    } else if (roll < adjustedGoal + 0.45) {
+      events.push({ minute, team: isHome ? "away" : "home", type: "save", player: isHome ? pickName(defender) : pickName(defender) });
+    } else if (roll < adjustedGoal + 0.6) {
+      events.push({ minute, team: isHome ? "away" : "home", type: "yellow", player: isHome ? pickName(defender) : pickName(defender) });
     } else {
-      events.push({
-        minute,
-        team: isHome ? "away" : "home",
-        type: "red",
-        player: isHome ? awayPlayer : homePlayer,
-      });
+      events.push({ minute, team: isHome ? "away" : "home", type: "red", player: isHome ? pickName(defender) : pickName(defender) });
     }
   }
 
@@ -422,7 +434,7 @@ export default function SimulatePage() {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [myRating, setMyRating] = useState<number>(90);
-  const [myPlayers, setMyPlayers] = useState<string[]>([]);
+  const [myPlayers, setMyPlayers] = useState<any[]>([]);
   const [standings, setStandings] = useState<LeagueEntry[]>(initialStandings);
   const [selectedStandingsLeague, setSelectedStandingsLeague] = useState<string>(playableLeague);
   const [seasonWeek, setSeasonWeek] = useState<number>(1);
@@ -509,7 +521,7 @@ export default function SimulatePage() {
     const savedPitchPositions = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}") as Record<string, any>;
     const loadedPlayers = Object.values(savedPitchPositions || {})
       .filter((player: any) => player && player.name)
-      .map((player: any) => player.name);
+      .map((player: any) => ({ name: player.name, rating: player.rating || 75, position: player.position || "CM" }));
     setMyPlayers(loadedPlayers);
 
     // Load season state

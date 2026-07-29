@@ -228,6 +228,50 @@ export default function TransferMarketPage() {
     alert(`${player.name} sold for $${player.price.toLocaleString()}!`);
   };
 
+  // Debug helper: fill pitch with random players, deducting cost from budget
+  const fillDebugSquad = () => {
+    const budgetKey = getUserKey("budget");
+    const boughtKey = getUserKey("boughtPlayers");
+
+    const pool = (marketPlayers && marketPlayers.length) ? marketPlayers.slice() : initialPlayers.concat(generateAdditionalPlayers(51, 120));
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+
+    // pick 11 unique players not already owned
+    const avail = shuffled.filter((p) => !boughtPlayers.find((b) => b.id === p.id));
+    const selected = avail.slice(0, 11);
+    if (selected.length === 0) {
+      alert("No available players to fill the squad.");
+      return;
+    }
+
+    const newBought = [...boughtPlayers, ...selected];
+    setBoughtPlayers(newBought);
+    localStorage.setItem(boughtKey, JSON.stringify(newBought));
+
+    const totalCost = selected.reduce((s, p) => s + (p.price || 0), 0);
+    const newBudget = budget - totalCost;
+    setBudget(newBudget);
+    localStorage.setItem(budgetKey, String(newBudget));
+
+    // create pitch positions mapping (11 slots)
+    const slots = ["GK","LB","CB","CB","RB","LM","CM","CM","RM","ST","ST"];
+    const pitchPositions: Record<string, any> = {};
+    selected.forEach((p, i) => {
+      const slot = slots[i] || `SUB${i}`;
+      pitchPositions[slot] = { id: `bought_${p.id}`, name: p.name, position: p.position, rating: p.rating };
+    });
+    localStorage.setItem(getUserKey("pitchPositions"), JSON.stringify(pitchPositions));
+
+    // bench: next 7 available players
+    const benchPlayers = avail.slice(11, 18).map((p) => ({ id: `bought_${p.id}`, name: p.name, position: p.position, rating: p.rating }));
+    localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(benchPlayers));
+
+    // remove selected from visible market list to avoid immediate duplicates
+    setMarketPlayers((cur) => (cur ? cur.filter((m) => !selected.find((s) => s.id === m.id)) : cur));
+
+    alert(`Filled squad with ${selected.length} players. $${totalCost.toLocaleString()} deducted.`);
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6">
       <div className="flex items-center justify-between mb-6">
