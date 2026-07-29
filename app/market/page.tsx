@@ -272,6 +272,16 @@ export default function TransferMarketPage() {
     alert(`Filled squad with ${selected.length} players. $${totalCost.toLocaleString()} deducted.`);
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("debugFill") !== "1") return;
+    // Run only once per visit with this query flag.
+    if (window.sessionStorage.getItem("debugFillRan") === "1") return;
+    fillDebugSquad();
+    window.sessionStorage.setItem("debugFillRan", "1");
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6">
       <div className="flex items-center justify-between mb-6">

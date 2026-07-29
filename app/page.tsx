@@ -47,6 +47,12 @@ export default function Home() {
           >
             Transfer Market →
           </Link>
+          <Link
+            href="/market?debugFill=1"
+            className="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-5 py-2 rounded-lg transition-colors"
+          >
+            Debug: Fill Squad
+          </Link>
         </div>
       </div>
       <SquadManager />
