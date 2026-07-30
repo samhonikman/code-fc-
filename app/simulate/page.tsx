@@ -426,6 +426,8 @@ const eventIcon: Record<string, string> = {
 };
 
 export default function SimulatePage() {
+  const [isClientReady, setIsClientReady] = useState(false);
+  const [seasonStateLoaded, setSeasonStateLoaded] = useState(false);
   const [selectedOpponent, setSelectedOpponent] = useState<typeof opponents[0] | null>(null);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [otherMatchdayResults, setOtherMatchdayResults] = useState<LeagueMatch[]>([]);
@@ -512,6 +514,34 @@ export default function SimulatePage() {
     });
   };
 
+  const resetSeason = () => {
+    if (typeof window === "undefined") return;
+
+    const freshFixtures = generateSeasonFixtures();
+    const resetStandings = initialStandings;
+
+    localStorage.setItem("seasonWeek", "1");
+    localStorage.setItem("seasonFixtures", JSON.stringify(freshFixtures));
+    localStorage.setItem("playedWeeks", JSON.stringify([]));
+    localStorage.setItem("leagueStandings", JSON.stringify(resetStandings));
+
+    setSeasonWeek(1);
+    setSeasonFixtures(freshFixtures);
+    setPlayedWeeks(new Set());
+    setStandings(resetStandings);
+    setResult(null);
+    setOtherMatchdayResults([]);
+    setSelectedOpponent(null);
+    setSelectedStandingsLeague(playableLeague);
+    setOpponentPlayers([]);
+
+    alert("Season reset.");
+  };
+
+  useEffect(() => {
+    setIsClientReady(true);
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -531,9 +561,17 @@ export default function SimulatePage() {
 
     if (savedSeasonFixtures) {
       try {
-        setSeasonFixtures(JSON.parse(savedSeasonFixtures));
-        setSeasonWeek(savedSeasonWeek ? parseInt(savedSeasonWeek, 10) : 1);
-        setPlayedWeeks(new Set(JSON.parse(savedPlayedWeeks || "[]")));
+        const parsedFixtures = JSON.parse(savedSeasonFixtures);
+        if (Array.isArray(parsedFixtures) && parsedFixtures.length > 0) {
+          setSeasonFixtures(parsedFixtures);
+          setSeasonWeek(savedSeasonWeek ? parseInt(savedSeasonWeek, 10) : 1);
+          setPlayedWeeks(new Set(JSON.parse(savedPlayedWeeks || "[]")));
+        } else {
+          const newFixtures = generateSeasonFixtures();
+          setSeasonFixtures(newFixtures);
+          setSeasonWeek(1);
+          setPlayedWeeks(new Set());
+        }
       } catch {
         const newFixtures = generateSeasonFixtures();
         setSeasonFixtures(newFixtures);
@@ -567,19 +605,21 @@ export default function SimulatePage() {
     } else {
       fetchAllRosters();
     }
+
+    setSeasonStateLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !seasonStateLoaded) return;
     localStorage.setItem("seasonWeek", seasonWeek.toString());
     localStorage.setItem("seasonFixtures", JSON.stringify(seasonFixtures));
     localStorage.setItem("playedWeeks", JSON.stringify(Array.from(playedWeeks)));
-  }, [seasonWeek, seasonFixtures, playedWeeks]);
+  }, [seasonWeek, seasonFixtures, playedWeeks, seasonStateLoaded]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !seasonStateLoaded) return;
     localStorage.setItem("leagueStandings", JSON.stringify(standings));
-  }, [standings]);
+  }, [standings, seasonStateLoaded]);
 
   const filteredStandings = sortStandings(standings).filter((entry) => {
     if (entry.name === "My Squad") {
@@ -751,9 +791,79 @@ export default function SimulatePage() {
     setOtherMatchdayResults(otherMatches);
   };
 
+  const simulateSeason = () => {
+    if (myPlayers.length < 11) {
+      alert("You need 11 players on the pitch to simulate the season.");
+      return;
+    }
+
+    const remainingWeeks = seasonFixtures
+      .map((name, i) => ({ week: i + 1, name }))
+      .filter(({ week }) => !playedWeeks.has(week));
+
+    if (remainingWeeks.length === 0) {
+      alert("No remaining weeks to simulate. Reset the season to play again.");
+      return;
+    }
+
+    const allMatches: LeagueMatch[] = [];
+    const newPlayedWeeks = new Set(playedWeeks);
+    let lastWeek = seasonWeek;
+
+    for (const { week, name: opponentName } of remainingWeeks) {
+      const opponent = playableOpponents.find((o) => o.name === opponentName);
+      if (!opponent) continue;
+
+      const opponentRosterNames = rosterCache[opponent.name]
+        ? rosterCache[opponent.name].map((p) => p.name)
+        : createRosterWithStats(
+            opponent.name,
+            opponent.rating,
+            opponentFallbackPlayers[opponent.name] || []
+          ).map((p) => p.name);
+
+      const mainMatch = simulateMatch(
+        myRating,
+        opponent.rating,
+        myPlayers.slice(0, 11),
+        opponentRosterNames
+      );
+      const otherMatches = generateOtherMatchday(opponent.name);
+
+      allMatches.push({
+        home: "My Squad",
+        away: opponent.name,
+        homeGoals: mainMatch.homeGoals,
+        awayGoals: mainMatch.awayGoals,
+        events: mainMatch.events,
+      });
+      allMatches.push(...otherMatches);
+
+      newPlayedWeeks.add(week);
+      lastWeek = week;
+    }
+
+    // Single bulk standings update for all simulated weeks at once
+    updateStandings(allMatches);
+    setPlayedWeeks(newPlayedWeeks);
+    setSeasonWeek(Math.min(lastWeek + 1, seasonFixtures.length));
+    setResult(null);
+    setOtherMatchdayResults([]);
+
+    alert(`Simulated ${remainingWeeks.length} remaining week(s). Season complete!`);
+  };
+
   const reset = () => {
     setResult(null);
   };
+
+  if (!isClientReady || !seasonStateLoaded) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-6">
+        <div className="text-gray-300 text-sm">Loading season...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6">
@@ -946,6 +1056,21 @@ export default function SimulatePage() {
                 ? "Loading roster..."
                 : `Play Week ${seasonWeek} vs ${currentWeekOpponent.name}`
               : "Season Complete!"}
+          </button>
+
+          <button
+            onClick={simulateSeason}
+            disabled={rosterLoading || myPlayers.length < 11}
+            className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold text-lg py-3 rounded-xl transition-colors mt-4"
+          >
+            ⚡ Simulate Season
+          </button>
+
+          <button
+            onClick={resetSeason}
+            className="w-full bg-red-600 hover:bg-red-500 text-white font-bold text-lg py-3 rounded-xl transition-colors mt-4"
+          >
+            Reset Season
           </button>
         </>
       ) : (

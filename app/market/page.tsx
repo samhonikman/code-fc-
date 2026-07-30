@@ -198,6 +198,30 @@ export default function TransferMarketPage() {
     const updated = [...boughtPlayers, player];
     localStorage.setItem(budgetKey, String(newBudget));
     localStorage.setItem(boughtKey, JSON.stringify(updated));
+
+    // Keep squad state deterministic: add bought player to bench only if not already on pitch/bench.
+    const savedPositions = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}");
+    const savedBench: any[] = JSON.parse(localStorage.getItem(getUserKey("benchPlayers")) || "[]");
+    const squadPlayer = {
+      id: `bought_${player.id}`,
+      name: player.name,
+      position: player.position,
+      rating: player.rating,
+      pace: 80,
+      shooting: 80,
+      passing: 80,
+      dribbling: 80,
+      defense: 60,
+      physical: 75,
+    };
+
+    const existsOnPitch = Object.values(savedPositions || {}).some((p: any) => p && p.id === squadPlayer.id);
+    const existsOnBench = savedBench.some((p: any) => p && p.id === squadPlayer.id);
+    if (!existsOnPitch && !existsOnBench) {
+      const updatedBench = [...savedBench, squadPlayer];
+      localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(updatedBench));
+    }
+
     setBudget(newBudget);
     setBoughtPlayers(updated);
     setMarketPlayers((current) => current ? current.filter((p) => p.id !== player.id) : current);

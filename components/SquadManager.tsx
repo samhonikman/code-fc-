@@ -37,6 +37,9 @@ export default function SquadManager() {
   const [positions, setPositions] = useState<Record<string, Player>>({});
   const [bench, setBench] = useState<Player[]>([]);
   const [selected, setSelected] = useState<Player | null>(null);
+  // Prevents save effects from wiping localStorage with initial empty state
+  // before the load effect has committed the real data (fixes StrictMode double-invoke).
+  const [isLoaded, setIsLoaded] = useState(false);
 
   const benchRef = useRef(bench);
   const positionsRef = useRef(positions);
@@ -48,6 +51,14 @@ export default function SquadManager() {
     const bought: any[] = JSON.parse(localStorage.getItem(getUserKey("boughtPlayers")) || "[]");
     const savedPositions: Record<string, Player> = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}");
     const savedBench: Player[] = JSON.parse(localStorage.getItem(getUserKey("benchPlayers")) || "[]");
+
+    console.group("[SquadManager] initial hydrate");
+    console.log("raw storage", {
+      boughtCount: Array.isArray(bought) ? bought.length : 0,
+      pitchSlotCount: Object.keys(savedPositions || {}).length,
+      pitchSlots: Object.keys(savedPositions || {}),
+      benchCount: Array.isArray(savedBench) ? savedBench.length : 0,
+    });
 
     // Clean saved positions: ensure no duplicated player IDs across pitch positions
     const seenIds = new Set<string>();
@@ -65,11 +76,28 @@ export default function SquadManager() {
     // Remove any bench players that are already placed on the pitch
     const filteredBench = savedBench.filter((p) => !seenIds.has(p.id));
 
+    console.log("cleaned storage", {
+      cleanedPitchSlotCount: Object.keys(cleanedPositions).length,
+      cleanedPitchSlots: Object.keys(cleanedPositions),
+      removedFromBench: savedBench.length - filteredBench.length,
+      filteredBenchCount: filteredBench.length,
+    });
+
     const pitchedIds = new Set(Object.values(cleanedPositions).map((p) => p.id));
     const benchedIds = new Set(filteredBench.map((p) => p.id));
 
-    if (Object.keys(cleanedPositions).length > 0) setPositions(cleanedPositions);
-    if (filteredBench.length > 0) setBench(filteredBench);
+    // Always restore exactly what was saved so navigation does not mutate the squad.
+    setPositions(cleanedPositions);
+    setBench(filteredBench);
+    setIsLoaded(true);
+
+    // Only backfill from bought players when there is no saved squad state yet.
+    const hasSavedSquadState = Object.keys(cleanedPositions).length > 0 || filteredBench.length > 0;
+    if (hasSavedSquadState) {
+      console.log("hydrate source", "saved pitch/bench");
+      console.groupEnd();
+      return;
+    }
 
     // Use a stable string ID so no two bought players ever collide
     const newPlayers: Player[] = bought
@@ -92,8 +120,15 @@ export default function SquadManager() {
         // Deduplicate: never add a player whose ID already exists in prev
         const existingIds = new Set(prev.map((p) => p.id));
         const fresh = newPlayers.filter((p) => !existingIds.has(p.id));
+        console.log("hydrate source", "fallback from boughtPlayers", {
+          fallbackCount: fresh.length,
+        });
+        console.groupEnd();
         return fresh.length > 0 ? [...prev, ...fresh] : prev;
       });
+    } else {
+      console.log("hydrate source", "none");
+      console.groupEnd();
     }
   }, []);
 
@@ -107,16 +142,19 @@ export default function SquadManager() {
       : 0;
 
   useEffect(() => {
+    if (!isLoaded) return;
     localStorage.setItem(getUserKey("squadRating"), String(overallRating));
-  }, [overallRating]);
+  }, [overallRating, isLoaded]);
 
   useEffect(() => {
+    if (!isLoaded) return;
     localStorage.setItem(getUserKey("pitchPositions"), JSON.stringify(positions));
-  }, [positions]);
+  }, [positions, isLoaded]);
 
   useEffect(() => {
+    if (!isLoaded) return;
     localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(bench));
-  }, [bench]);
+  }, [bench, isLoaded]);
 
   const sellPlayer = (player: Player) => {
     setBench((prev) => prev.filter((p) => p.id !== player.id));

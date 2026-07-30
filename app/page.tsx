@@ -71,8 +71,18 @@ export default function Home() {
   };
 
   const fillDebugSquad = () => {
+    const startedAt = new Date().toISOString();
     const budgetKey = getUserKey("budget");
     const boughtKey = getUserKey("boughtPlayers");
+
+    console.group("[Debug Fill Squad] click");
+    console.log("startedAt", startedAt);
+    console.log("keys", {
+      budgetKey,
+      boughtKey,
+      pitchKey: getUserKey("pitchPositions"),
+      benchKey: getUserKey("benchPlayers"),
+    });
 
     const baseId = Date.now();
     const slots = ["GK", "LB", "CB", "CB", "RB", "CM", "CM", "CM", "LW", "RW", "ST"];
@@ -82,29 +92,26 @@ export default function Home() {
 
     const totalCost = [...starters, ...bench].reduce((sum, p) => sum + (p.price || 0), 0);
     const currentBudgetValue = parseInt(localStorage.getItem(budgetKey) || "0", 10) || 0;
+    console.log("generated", {
+      startersCount: starters.length,
+      benchCount: bench.length,
+      totalCost,
+      currentBudgetValue,
+    });
+
     if (currentBudgetValue < totalCost) {
+      console.warn("aborted: not enough budget", {
+        needed: totalCost,
+        available: currentBudgetValue,
+      });
+      console.groupEnd();
       alert(`Not enough budget to auto-fill squad. Need $${totalCost.toLocaleString()}, have $${currentBudgetValue.toLocaleString()}.`);
       return;
     }
 
-    const currentBought = JSON.parse(localStorage.getItem(boughtKey) || "[]") as Array<{ id: number }>;
-    const mergedBought = [...currentBought, ...starters, ...bench];
+    const fullSquad = [...starters, ...bench];
 
-    const pitchPositions: Record<string, any> = {
-      GK: { id: `bought_${starters[0].id}`, name: starters[0].name, position: starters[0].position, rating: starters[0].rating },
-      LB: { id: `bought_${starters[1].id}`, name: starters[1].name, position: starters[1].position, rating: starters[1].rating },
-      CB1: { id: `bought_${starters[2].id}`, name: starters[2].name, position: starters[2].position, rating: starters[2].rating },
-      CB2: { id: `bought_${starters[3].id}`, name: starters[3].name, position: starters[3].position, rating: starters[3].rating },
-      RB: { id: `bought_${starters[4].id}`, name: starters[4].name, position: starters[4].position, rating: starters[4].rating },
-      CM1: { id: `bought_${starters[5].id}`, name: starters[5].name, position: starters[5].position, rating: starters[5].rating },
-      CM2: { id: `bought_${starters[6].id}`, name: starters[6].name, position: starters[6].position, rating: starters[6].rating },
-      CM3: { id: `bought_${starters[7].id}`, name: starters[7].name, position: starters[7].position, rating: starters[7].rating },
-      LW: { id: `bought_${starters[8].id}`, name: starters[8].name, position: starters[8].position, rating: starters[8].rating },
-      RW: { id: `bought_${starters[9].id}`, name: starters[9].name, position: starters[9].position, rating: starters[9].rating },
-      ST: { id: `bought_${starters[10].id}`, name: starters[10].name, position: starters[10].position, rating: starters[10].rating },
-    };
-
-    const benchPlayers = bench.map((p) => ({
+    const toSquadPlayer = (p: ReturnType<typeof createDebugPlayer>) => ({
       id: `bought_${p.id}`,
       name: p.name,
       position: p.position,
@@ -115,18 +122,62 @@ export default function Home() {
       dribbling: p.dribbling,
       defense: p.defense,
       physical: p.physical,
-    }));
+    });
+
+    const pitchPositions: Record<string, any> = {
+      GK: toSquadPlayer(starters[0]),
+      LB: toSquadPlayer(starters[1]),
+      CB1: toSquadPlayer(starters[2]),
+      CB2: toSquadPlayer(starters[3]),
+      RB: toSquadPlayer(starters[4]),
+      CM1: toSquadPlayer(starters[5]),
+      CM2: toSquadPlayer(starters[6]),
+      CM3: toSquadPlayer(starters[7]),
+      LW: toSquadPlayer(starters[8]),
+      RW: toSquadPlayer(starters[9]),
+      ST: toSquadPlayer(starters[10]),
+    };
+
+    const benchPlayers = bench.map((p) => toSquadPlayer(p));
+    const pitchKeys = Object.keys(pitchPositions);
 
     const newBudget = currentBudgetValue - totalCost;
-    localStorage.setItem(boughtKey, JSON.stringify(mergedBought));
+    // Debug fill should be deterministic: replace squad state rather than merge with stale players.
+    localStorage.setItem(boughtKey, JSON.stringify(fullSquad));
     localStorage.setItem(getUserKey("pitchPositions"), JSON.stringify(pitchPositions));
     localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(benchPlayers));
     localStorage.setItem(getUserKey("squadRating"), String(Math.round(starters.reduce((s, p) => s + p.rating, 0) / starters.length)));
     localStorage.setItem(budgetKey, String(newBudget));
 
+    const savedPitch = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}");
+    const savedBench = JSON.parse(localStorage.getItem(getUserKey("benchPlayers")) || "[]");
+    const savedBought = JSON.parse(localStorage.getItem(boughtKey) || "[]");
+
+    console.log("saved snapshot", {
+      pitchSlotCount: Object.keys(savedPitch).length,
+      pitchSlots: Object.keys(savedPitch),
+      benchCount: Array.isArray(savedBench) ? savedBench.length : 0,
+      boughtCount: Array.isArray(savedBought) ? savedBought.length : 0,
+      expectedPitchKeys: pitchKeys,
+      newBudget,
+    });
+    console.groupEnd();
+
     setBudget(newBudget);
     setSquadUiVersion((v) => v + 1);
     alert(`Squad auto-filled. Spent $${totalCost.toLocaleString()}.`);
+  };
+
+  const resetSeasonDebug = () => {
+    if (typeof window === "undefined") return;
+    const storedFixtures = JSON.parse(localStorage.getItem("seasonFixtures") || "[]");
+    const freshFixtures = Array.isArray(storedFixtures) && storedFixtures.length > 0 ? storedFixtures : [];
+    localStorage.setItem("seasonWeek", "1");
+    localStorage.setItem("seasonFixtures", JSON.stringify(freshFixtures));
+    localStorage.setItem("playedWeeks", JSON.stringify([]));
+    localStorage.removeItem("leagueStandings");
+    alert("Season reset.");
+    window.location.assign("/simulate");
   };
 
   return (
@@ -169,6 +220,12 @@ export default function Home() {
               className="bg-red-700 hover:bg-red-600 text-white font-semibold px-5 py-2 rounded-lg transition-colors"
             >
               Clear Squad
+            </button>
+            <button
+              onClick={resetSeasonDebug}
+              className="bg-purple-700 hover:bg-purple-600 text-white font-semibold px-5 py-2 rounded-lg transition-colors"
+            >
+              Reset Season
             </button>
           </div>
         </div>
