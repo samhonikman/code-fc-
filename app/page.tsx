@@ -133,7 +133,7 @@ export default function Home() {
     <main className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-3xl font-bold">FUT Team Manager</h1>
-        <div className="flex items-start gap-3">
+        <div className="flex items-center gap-3">
           {budget !== null && (
             <span className="bg-green-700 text-white font-semibold px-4 py-2 rounded-lg">
               💰 ${budget.toLocaleString()}
