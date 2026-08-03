@@ -783,9 +783,7 @@ export default function SimulatePage() {
     newPlayedWeeks.add(seasonWeek);
     setPlayedWeeks(newPlayedWeeks);
 
-    if (seasonWeek < seasonFixtures.length) {
-      setSeasonWeek(seasonWeek + 1);
-    }
+    setSeasonWeek(seasonWeek + 1);
 
     setResult(mainMatch);
     setOtherMatchdayResults(otherMatches);
@@ -846,7 +844,7 @@ export default function SimulatePage() {
     // Single bulk standings update for all simulated weeks at once
     updateStandings(allMatches);
     setPlayedWeeks(newPlayedWeeks);
-    setSeasonWeek(Math.min(lastWeek + 1, seasonFixtures.length));
+    setSeasonWeek(lastWeek + 1);
     setResult(null);
     setOtherMatchdayResults([]);
 
@@ -905,6 +903,9 @@ export default function SimulatePage() {
                   <th className="py-2 pr-4">#</th>
                   <th className="py-2 pr-4">Team</th>
                   <th className="py-2 pr-4">P</th>
+                  <th className="py-2 pr-4 text-green-400">W</th>
+                  <th className="py-2 pr-4 text-yellow-400">D</th>
+                  <th className="py-2 pr-4 text-red-400">L</th>
                   <th className="py-2 pr-4">GF</th>
                   <th className="py-2 pr-4">GA</th>
                   <th className="py-2 pr-4">GD</th>
@@ -921,6 +922,9 @@ export default function SimulatePage() {
                       </span>
                     </td>
                     <td className="py-3 pr-4">{entry.played}</td>
+                    <td className="py-3 pr-4 text-green-400 font-semibold">{entry.win}</td>
+                    <td className="py-3 pr-4 text-yellow-400 font-semibold">{entry.draw}</td>
+                    <td className="py-3 pr-4 text-red-400 font-semibold">{entry.loss}</td>
                     <td className="py-3 pr-4">{entry.goalsFor}</td>
                     <td className="py-3 pr-4">{entry.goalsAgainst}</td>
                     <td className="py-3 pr-4">{entry.goalsFor - entry.goalsAgainst}</td>
