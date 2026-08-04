@@ -7,34 +7,16 @@ type PositionPlayer = {
   position?: string;
 };
 
-async function getUserFromAuthHeader(req: Request) {
-  const auth = req.headers.get("authorization") || "";
-  const match = auth.match(/^Bearer (.+)$/);
-  const token = match ? match[1] : null;
-  if (!token) return null;
-
-  try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data } = await supabaseAdmin.auth.getUser(token);
-    return data.user || null;
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(req: Request) {
-  const user = await getUserFromAuthHeader(req);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { searchParams } = new URL(req.url);
+  const excludeUsername = (searchParams.get("excludeUsername") || "").trim().toLowerCase();
 
   try {
     const supabaseAdmin = getSupabaseAdmin();
 
     const { data: squadRows, error: squadError } = await supabaseAdmin
       .from("squads")
-      .select("user_id, positions")
-      .neq("user_id", user.id);
+      .select("user_id, positions");
 
     if (squadError) {
       return NextResponse.json({ error: squadError.message }, { status: 500 });
@@ -82,9 +64,14 @@ export async function GET(req: Request) {
             players.length
         );
 
+        const resolvedUsername = idToName.get(row.user_id) || String(row.user_id).slice(0, 8);
+
+        // Filter out the requesting user by username (case-insensitive)
+        if (excludeUsername && resolvedUsername.trim().toLowerCase() === excludeUsername) return null;
+
         return {
           userId: row.user_id as string,
-          username: idToName.get(row.user_id) || String(row.user_id).slice(0, 8),
+          username: resolvedUsername,
           rating,
           players: players.map((p) => ({
             name: p.name || "Player",

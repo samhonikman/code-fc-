@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getUserKey, getCurrentUser } from "@/lib/user";
-import getSupabaseClient from "@/lib/supabaseClient";
 
 type OpponentTeam = {
   name: string;
@@ -542,27 +541,9 @@ export default function SimulatePage() {
   const loadAccountOpponents = async (currentUsername: string | null) => {
     if (typeof window === "undefined") return;
 
-    const debugPrefix = "[Account Opponents]";
-    console.group(`${debugPrefix} supabase fetch start`);
-    console.log("currentUsername", currentUsername);
-
     try {
-      const supabase = getSupabaseClient();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
-      if (!accessToken) {
-        console.warn("no-auth-session", { hint: "Sign in first to load opponents from Supabase." });
-        setAccountOpponents([]);
-        setSelectedAccountOpponent("");
-        console.groupEnd();
-        return;
-      }
-
-      const response = await fetch("/api/squads/opponents", {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const excludeParam = currentUsername ? `?excludeUsername=${encodeURIComponent(currentUsername)}` : "";
+      const response = await fetch(`/api/squads/opponents${excludeParam}`);
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -573,7 +554,6 @@ export default function SimulatePage() {
         });
         setAccountOpponents([]);
         setSelectedAccountOpponent("");
-        console.groupEnd();
         return;
       }
 
@@ -597,24 +577,13 @@ export default function SimulatePage() {
         .filter((entry: AccountSquadOpponent) => entry.players.length >= 11)
         .sort((a: AccountSquadOpponent, b: AccountSquadOpponent) => a.username.localeCompare(b.username));
 
-      console.log("supabasePayloadCount", rawOpponents.length);
-      console.log("finalOpponents", squads.map((s) => ({ username: s.username, rating: s.rating, players: s.players.length, userId: s.userId })));
-
       setAccountOpponents(squads);
       setSelectedAccountOpponent((prev) => (prev && squads.some((s) => s.username === prev) ? prev : squads[0]?.username || ""));
-
-      if (squads.length === 0) {
-        console.warn("no-opponents-found", {
-          hint: "No other Supabase user squads with at least 11 pitch players were found.",
-        });
-      }
     } catch (error) {
       console.warn("supabase-opponents-fetch-error", error);
       setAccountOpponents([]);
       setSelectedAccountOpponent("");
     }
-
-    console.groupEnd();
   };
 
   const persistRosterCache = (cache: RosterCache) => {
