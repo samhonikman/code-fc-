@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getUserKey, getCurrentUser } from "@/lib/user";
+import getSupabaseClient from "@/lib/supabaseClient";
 
 type OpponentTeam = {
   name: string;
@@ -369,6 +370,7 @@ type LeagueMatch = {
 };
 
 type AccountSquadOpponent = {
+  userId?: string;
   username: string;
   rating: number;
   players: Array<{ name: string; rating?: number; position?: string }>;
@@ -537,52 +539,82 @@ export default function SimulatePage() {
     }
   };
 
-  const loadAccountOpponents = (currentUsername: string | null) => {
+  const loadAccountOpponents = async (currentUsername: string | null) => {
     if (typeof window === "undefined") return;
 
-    // Discover accounts from actual saved squad keys so Supabase-based users
-    // are included even if they are not present in legacy fut_users storage.
-    const usernames = new Set<string>();
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i) || "";
-      if (!key.endsWith(":pitchPositions")) continue;
-      const username = key.slice(0, key.length - ":pitchPositions".length).trim();
-      if (!username) continue;
-      usernames.add(username);
+    const debugPrefix = "[Account Opponents]";
+    console.group(`${debugPrefix} supabase fetch start`);
+    console.log("currentUsername", currentUsername);
+
+    try {
+      const supabase = getSupabaseClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        console.warn("no-auth-session", { hint: "Sign in first to load opponents from Supabase." });
+        setAccountOpponents([]);
+        setSelectedAccountOpponent("");
+        console.groupEnd();
+        return;
+      }
+
+      const response = await fetch("/api/squads/opponents", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        console.warn("supabase-opponents-fetch-failed", {
+          status: response.status,
+          statusText: response.statusText,
+          payload,
+        });
+        setAccountOpponents([]);
+        setSelectedAccountOpponent("");
+        console.groupEnd();
+        return;
+      }
+
+      const rawOpponents: any[] = Array.isArray(payload.opponents) ? payload.opponents : [];
+      const normalizedCurrent = (currentUsername || "").trim().toLowerCase();
+
+      const mappedOpponents: AccountSquadOpponent[] = rawOpponents
+        .filter((entry: any) => {
+          const username = String(entry?.username || "").trim();
+          if (!username) return false;
+          return username.toLowerCase() !== normalizedCurrent;
+        })
+        .map((entry: any) => ({
+          userId: String(entry.userId || ""),
+          username: String(entry.username || "Unknown"),
+          rating: typeof entry.rating === "number" ? entry.rating : 75,
+          players: Array.isArray(entry.players) ? entry.players : [],
+        }));
+
+      const squads: AccountSquadOpponent[] = mappedOpponents
+        .filter((entry: AccountSquadOpponent) => entry.players.length >= 11)
+        .sort((a: AccountSquadOpponent, b: AccountSquadOpponent) => a.username.localeCompare(b.username));
+
+      console.log("supabasePayloadCount", rawOpponents.length);
+      console.log("finalOpponents", squads.map((s) => ({ username: s.username, rating: s.rating, players: s.players.length, userId: s.userId })));
+
+      setAccountOpponents(squads);
+      setSelectedAccountOpponent((prev) => (prev && squads.some((s) => s.username === prev) ? prev : squads[0]?.username || ""));
+
+      if (squads.length === 0) {
+        console.warn("no-opponents-found", {
+          hint: "No other Supabase user squads with at least 11 pitch players were found.",
+        });
+      }
+    } catch (error) {
+      console.warn("supabase-opponents-fetch-error", error);
+      setAccountOpponents([]);
+      setSelectedAccountOpponent("");
     }
 
-    const normalizedCurrent = (currentUsername || "").trim().toLowerCase();
-    const candidateUsernames = Array.from(usernames).filter(
-      (username) => username.trim().toLowerCase() !== normalizedCurrent
-    );
-
-    const squads: AccountSquadOpponent[] = candidateUsernames
-      .map((username) => {
-        try {
-          const rawPitch = localStorage.getItem(`${username}:pitchPositions`) || "{}";
-          const pitch = JSON.parse(rawPitch) as Record<string, { name?: string; rating?: number; position?: string }>;
-          const players = Object.values(pitch || {}).filter((p) => p && p.name) as Array<{ name: string; rating?: number; position?: string }>;
-          if (players.length < 11) return null;
-
-          const savedRating = parseInt(localStorage.getItem(`${username}:squadRating`) || "0", 10) || 0;
-          const computedRating = players.length
-            ? Math.round(players.reduce((sum, p) => sum + (typeof p.rating === "number" ? p.rating : 75), 0) / players.length)
-            : 75;
-
-          return {
-            username,
-            rating: savedRating > 0 ? savedRating : computedRating,
-            players,
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter((entry): entry is AccountSquadOpponent => entry !== null)
-      .sort((a, b) => a.username.localeCompare(b.username));
-
-    setAccountOpponents(squads);
-    setSelectedAccountOpponent((prev) => (prev && squads.some((s) => s.username === prev) ? prev : squads[0]?.username || ""));
+    console.groupEnd();
   };
 
   const persistRosterCache = (cache: RosterCache) => {

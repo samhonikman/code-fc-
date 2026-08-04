@@ -16,6 +16,16 @@ const leagueMap: Record<string, string> = {
   "Arsenal": "PL",
 };
 
+const leagueNameToCode: Record<string, string> = {
+  "Premier League": "PL",
+  "La Liga": "PD",
+  "Bundesliga": "BL1",
+  "Ligue 1": "FL1",
+  "Serie A": "SA",
+};
+
+const validCompetitionCodes = new Set(["PL", "PD", "BL1", "FL1", "SA"]);
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const teamName = url.searchParams.get("name")?.trim();
@@ -33,7 +43,17 @@ export async function GET(request: Request) {
     );
   }
 
-  const competitionCode = league || leagueMap[teamName] || "PL";
+  const normalizedLeague = (league || "").trim();
+  const leagueCodeFromName = leagueNameToCode[normalizedLeague];
+  const leagueCodeIfAlreadyCode = validCompetitionCodes.has(normalizedLeague.toUpperCase())
+    ? normalizedLeague.toUpperCase()
+    : null;
+
+  const competitionCode =
+    leagueCodeFromName ||
+    leagueCodeIfAlreadyCode ||
+    leagueMap[teamName] ||
+    "PL";
   const competitionUrl = `https://api.football-data.org/v4/competitions/${competitionCode}/teams`;
 
   const competitionResponse = await fetch(competitionUrl, {

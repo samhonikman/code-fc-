@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import getSupabaseClient from "@/lib/supabaseClient";
+import { getUserKey } from "@/lib/user";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -57,10 +58,11 @@ export default function SignInPage() {
 
   async function migrateToSupabase(accessToken: string, userId: string) {
     try {
-      const bought = JSON.parse(localStorage.getItem("boughtPlayers") || "[]");
-      const positions = JSON.parse(localStorage.getItem("pitchPositions") || "{}");
-      const bench = JSON.parse(localStorage.getItem("benchPlayers") || "[]");
-      const budget = parseInt(localStorage.getItem("budget") || "0", 10) || 0;
+      // Use user-scoped keys so each account migrates its own squad.
+      const bought = JSON.parse(localStorage.getItem(getUserKey("boughtPlayers")) || "[]");
+      const positions = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}");
+      const bench = JSON.parse(localStorage.getItem(getUserKey("benchPlayers")) || "[]");
+      const budget = parseInt(localStorage.getItem(getUserKey("budget")) || "0", 10) || 0;
 
       const payload = { budget, positions, bench, bought };
 
@@ -74,12 +76,9 @@ export default function SignInPage() {
       });
 
       if (res.ok) {
-        // mark migrated and clear legacy local keys
+        // mark migrated; keep local keys so existing local-first flows continue
+        // to work and squads don't disappear after sign-in.
         localStorage.setItem('migrated_to_supabase', '1');
-        localStorage.removeItem('boughtPlayers');
-        localStorage.removeItem('pitchPositions');
-        localStorage.removeItem('benchPlayers');
-        // keep budget locally if desired but it's now in Supabase
       } else {
         const text = await res.text();
         const msg = `Migration failed: ${res.status} ${res.statusText} ${text}`;
