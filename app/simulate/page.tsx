@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getUserKey, getCurrentUser, getStoredUsers } from "@/lib/user";
+import { getUserKey, getCurrentUser } from "@/lib/user";
 
 type OpponentTeam = {
   name: string;
@@ -540,10 +540,23 @@ export default function SimulatePage() {
   const loadAccountOpponents = (currentUsername: string | null) => {
     if (typeof window === "undefined") return;
 
-    const users = getStoredUsers();
-    const usernames = Object.keys(users).filter((username) => username !== currentUsername);
+    // Discover accounts from actual saved squad keys so Supabase-based users
+    // are included even if they are not present in legacy fut_users storage.
+    const usernames = new Set<string>();
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i) || "";
+      if (!key.endsWith(":pitchPositions")) continue;
+      const username = key.slice(0, key.length - ":pitchPositions".length).trim();
+      if (!username) continue;
+      usernames.add(username);
+    }
 
-    const squads: AccountSquadOpponent[] = usernames
+    const normalizedCurrent = (currentUsername || "").trim().toLowerCase();
+    const candidateUsernames = Array.from(usernames).filter(
+      (username) => username.trim().toLowerCase() !== normalizedCurrent
+    );
+
+    const squads: AccountSquadOpponent[] = candidateUsernames
       .map((username) => {
         try {
           const rawPitch = localStorage.getItem(`${username}:pitchPositions`) || "{}";

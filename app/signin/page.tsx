@@ -11,12 +11,48 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [isRecoveryFlow, setIsRecoveryFlow] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
 
   useEffect(() => {
     const local = localStorage.getItem("fut_current_user");
     setCurrentUser(local);
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("mode") === "reset") {
+      setMode("signin");
+      setMessage("Enter your email and use Forgot password to receive a reset link.");
+    }
+
+    // Supabase password recovery links include auth data in the URL hash.
+    // Detect this so we can show the "set new password" form.
+    const hash = window.location.hash.replace(/^#/, "");
+    if (hash) {
+      const hashParams = new URLSearchParams(hash);
+      const type = hashParams.get("type");
+      const accessToken = hashParams.get("access_token");
+      if (type === "recovery" || !!accessToken) {
+        setIsRecoveryFlow(true);
+        setMessage("Reset link verified. Enter your new password below.");
+      }
+    }
+
+    const supabase = getSupabaseClient();
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setIsRecoveryFlow(true);
+        setMessage("Reset link verified. Enter your new password below.");
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   async function migrateToSupabase(accessToken: string, userId: string) {
@@ -58,6 +94,36 @@ export default function SignInPage() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage(null);
+
+    if (isRecoveryFlow) {
+      if (newPassword.length < 6) {
+        setMessage("New password must be at least 6 characters.");
+        return;
+      }
+      if (newPassword !== confirmNewPassword) {
+        setMessage("New password and confirmation do not match.");
+        return;
+      }
+
+      setIsUpdatingPassword(true);
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      setIsUpdatingPassword(false);
+
+      if (error) {
+        setMessage(error.message || "Unable to reset password. Please request a new reset link.");
+        return;
+      }
+
+      setIsRecoveryFlow(false);
+      setNewPassword("");
+      setConfirmNewPassword("");
+      if (typeof window !== "undefined") {
+        window.history.replaceState({}, document.title, "/signin");
+      }
+      setMessage("Password reset successful. You can now sign in with your new password.");
+      return;
+    }
 
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedUsername = username.trim();
@@ -117,6 +183,33 @@ export default function SignInPage() {
     router.push('/');
   };
 
+  const handleForgotPassword = async () => {
+    setMessage(null);
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !trimmedEmail.includes("@")) {
+      setMessage("Enter your email address first, then click Forgot password.");
+      return;
+    }
+
+    setIsSendingReset(true);
+    const supabase = getSupabaseClient();
+    const redirectTo = typeof window !== "undefined"
+      ? `${window.location.origin}/signin?mode=reset`
+      : undefined;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+      redirectTo,
+    });
+    setIsSendingReset(false);
+
+    if (error) {
+      setMessage(error.message || "Unable to send password reset email.");
+      return;
+    }
+
+    setMessage("If that email exists, a password reset link has been sent.");
+  };
+
   const handleLogout = async () => {
     const supabase = getSupabaseClient();
     await supabase.auth.signOut();
@@ -150,6 +243,7 @@ export default function SignInPage() {
           </div>
         ) : null}
 
+        {!isRecoveryFlow ? (
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => setMode('signin')}
@@ -164,8 +258,14 @@ export default function SignInPage() {
             Create Account
           </button>
         </div>
+        ) : (
+          <div className="mb-6 rounded-2xl border border-blue-700 bg-blue-900/20 p-4 text-sm text-blue-100">
+            Reset your password below.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!isRecoveryFlow ? (
           <div>
             <label className="block text-sm font-semibold text-gray-300">Email</label>
             <input
@@ -177,8 +277,9 @@ export default function SignInPage() {
               autoComplete="email"
             />
           </div>
+          ) : null}
 
-          {mode === 'signup' ? (
+          {!isRecoveryFlow && mode === 'signup' ? (
             <div>
               <label className="block text-sm font-semibold text-gray-300">Username</label>
               <input
@@ -190,6 +291,7 @@ export default function SignInPage() {
             </div>
           ) : null}
 
+          {!isRecoveryFlow ? (
           <div>
             <label className="block text-sm font-semibold text-gray-300">Password</label>
             <input
@@ -200,15 +302,60 @@ export default function SignInPage() {
               placeholder="Enter a password"
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             />
+            {mode === "signin" ? (
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={isSendingReset}
+                  className="text-xs text-blue-300 hover:text-blue-200 disabled:text-gray-500"
+                >
+                  {isSendingReset ? "Sending reset link..." : "Forgot password?"}
+                </button>
+              </div>
+            ) : null}
           </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-gray-300">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500"
+                  placeholder="At least 6 characters"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-300">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500"
+                  placeholder="Re-enter your new password"
+                  autoComplete="new-password"
+                />
+              </div>
+            </>
+          )}
 
           {message ? <p className="text-sm text-yellow-300">{message}</p> : null}
 
           <button
             type="submit"
+            disabled={isUpdatingPassword}
             className="w-full rounded-2xl bg-green-600 px-4 py-3 font-semibold text-white hover:bg-green-500 transition"
           >
-            {mode === 'signup' ? 'Create Account' : 'Sign In'}
+            {isRecoveryFlow
+              ? isUpdatingPassword
+                ? "Updating Password..."
+                : "Set New Password"
+              : mode === 'signup'
+              ? 'Create Account'
+              : 'Sign In'}
           </button>
         </form>
       </div>
