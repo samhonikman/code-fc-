@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getUserKey } from "@/lib/user";
+import { getUserKey, getCurrentUser, getStoredUsers } from "@/lib/user";
 
 type OpponentTeam = {
   name: string;
@@ -280,9 +280,9 @@ const opponentFallbackPlayers: Record<string, string[]> = {
   "Atletico Madrid": ["Griezmann", "Felix", "Koke", "Oblak", "Llorente", "Trippier", "De Paul"],
 };
 
-const buildInitialStandings = (playableLeague: string): LeagueEntry[] => [
+const buildInitialStandings = (playableLeague: string, squadName: string): LeagueEntry[] => [
   {
-    name: "My Squad",
+    name: squadName,
     league: playableLeague,
     played: 0,
     win: 0,
@@ -366,6 +366,12 @@ type LeagueMatch = {
   homeGoals: number;
   awayGoals: number;
   events: MatchEvent[];
+};
+
+type AccountSquadOpponent = {
+  username: string;
+  rating: number;
+  players: Array<{ name: string; rating?: number; position?: string }>;
 };
 
 function simulateMatch(homeRating: number, awayRating: number, homeRoster: any[], awayRoster: any[]): MatchResult {
@@ -497,14 +503,18 @@ export default function SimulatePage() {
   const [result, setResult] = useState<MatchResult | null>(null);
   const [otherMatchdayResults, setOtherMatchdayResults] = useState<LeagueMatch[]>([]);
   const [opponentPlayers, setOpponentPlayers] = useState<OppPlayer[]>([]);
+  const [accountOpponents, setAccountOpponents] = useState<AccountSquadOpponent[]>([]);
+  const [selectedAccountOpponent, setSelectedAccountOpponent] = useState<string>("");
+  const [lastMatchOpponentName, setLastMatchOpponentName] = useState<string | null>(null);
   const [rosterCache, setRosterCache] = useState<RosterCache>({});
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [myRating, setMyRating] = useState<number>(90);
   const [myPlayers, setMyPlayers] = useState<any[]>([]);
+  const [mySquadName, setMySquadName] = useState<string>("My Squad");
   const [playableLeague, setPlayableLeague] = useState<string>("Premier League");
   const [resetLeagueChoice, setResetLeagueChoice] = useState<string>("Premier League");
-  const [standings, setStandings] = useState<LeagueEntry[]>(() => buildInitialStandings("Premier League"));
+  const [standings, setStandings] = useState<LeagueEntry[]>(() => buildInitialStandings("Premier League", "My Squad"));
   const [selectedStandingsLeague, setSelectedStandingsLeague] = useState<string>("Premier League");
   const [seasonWeek, setSeasonWeek] = useState<number>(1);
   const [seasonFixtures, setSeasonFixtures] = useState<SeasonFixture[]>([]);
@@ -525,6 +535,41 @@ export default function SimulatePage() {
     } catch {
       return null;
     }
+  };
+
+  const loadAccountOpponents = (currentUsername: string | null) => {
+    if (typeof window === "undefined") return;
+
+    const users = getStoredUsers();
+    const usernames = Object.keys(users).filter((username) => username !== currentUsername);
+
+    const squads: AccountSquadOpponent[] = usernames
+      .map((username) => {
+        try {
+          const rawPitch = localStorage.getItem(`${username}:pitchPositions`) || "{}";
+          const pitch = JSON.parse(rawPitch) as Record<string, { name?: string; rating?: number; position?: string }>;
+          const players = Object.values(pitch || {}).filter((p) => p && p.name) as Array<{ name: string; rating?: number; position?: string }>;
+          if (players.length < 11) return null;
+
+          const savedRating = parseInt(localStorage.getItem(`${username}:squadRating`) || "0", 10) || 0;
+          const computedRating = players.length
+            ? Math.round(players.reduce((sum, p) => sum + (typeof p.rating === "number" ? p.rating : 75), 0) / players.length)
+            : 75;
+
+          return {
+            username,
+            rating: savedRating > 0 ? savedRating : computedRating,
+            players,
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry): entry is AccountSquadOpponent => entry !== null)
+      .sort((a, b) => a.username.localeCompare(b.username));
+
+    setAccountOpponents(squads);
+    setSelectedAccountOpponent((prev) => (prev && squads.some((s) => s.username === prev) ? prev : squads[0]?.username || ""));
   };
 
   const persistRosterCache = (cache: RosterCache) => {
@@ -572,14 +617,18 @@ export default function SimulatePage() {
     setRosterLoading(false);
   };
 
-  const mergeStandingsWithInitial = (parsed: LeagueEntry[], league: string) => {
+  const mergeStandingsWithInitial = (parsed: LeagueEntry[], league: string, squadName: string) => {
     const parsedMap = new Map(parsed.map((entry) => [entry.name, entry]));
-    return buildInitialStandings(league).map((initial) => {
-      const saved = parsedMap.get(initial.name);
+    return buildInitialStandings(league, squadName).map((initial) => {
+      // Fall back to a legacy "My Squad" saved entry so existing progress
+      // carries over the first time this loads after the squad name changed
+      // from the fixed "My Squad" label to the account's username.
+      const saved = parsedMap.get(initial.name) || (initial.name === squadName ? parsedMap.get("My Squad") : undefined);
       if (!saved) return initial;
       return {
         ...initial,
         ...saved,
+        name: initial.name,
         league: initial.league || saved.league || "",
       };
     });
@@ -591,7 +640,7 @@ export default function SimulatePage() {
     const targetLeague = resetLeagueChoice;
     const freshFixtures = generateSeasonFixtures(targetLeague);
     const freshOtherLeagueFixtures = generateOtherLeagueFixtures(targetLeague);
-    const resetStandings = buildInitialStandings(targetLeague);
+    const resetStandings = buildInitialStandings(targetLeague, mySquadName);
 
     localStorage.setItem("playableLeague", targetLeague);
     localStorage.setItem("seasonWeek", "1");
@@ -608,6 +657,7 @@ export default function SimulatePage() {
     setPlayedWeeks(new Set());
     setStandings(resetStandings);
     setResult(null);
+    setLastMatchOpponentName(null);
     setOtherMatchdayResults([]);
     setSelectedOpponent(null);
     setSelectedStandingsLeague(targetLeague);
@@ -631,6 +681,11 @@ export default function SimulatePage() {
       .filter((player: any) => player && player.name)
       .map((player: any) => ({ name: player.name, rating: player.rating || 75, position: player.position || "CM" }));
     setMyPlayers(loadedPlayers);
+
+    const squadName = getCurrentUser() || "My Squad";
+    const currentUsername = getCurrentUser();
+    setMySquadName(squadName);
+    loadAccountOpponents(currentUsername);
 
     const savedPlayableLeague = localStorage.getItem("playableLeague");
     const league = savedPlayableLeague && leagueOrder.includes(savedPlayableLeague) ? savedPlayableLeague : "Premier League";
@@ -705,15 +760,15 @@ export default function SimulatePage() {
       try {
         const parsed = JSON.parse(savedStandings) as LeagueEntry[];
         if (Array.isArray(parsed) && parsed.length) {
-          const merged = mergeStandingsWithInitial(parsed, league);
-          const invalidLeagueData = merged.some((entry) => entry.name !== "My Squad" && !entry.league);
-          setStandings(invalidLeagueData ? buildInitialStandings(league) : merged);
+          const merged = mergeStandingsWithInitial(parsed, league, squadName);
+          const invalidLeagueData = merged.some((entry) => entry.name !== squadName && !entry.league);
+          setStandings(invalidLeagueData ? buildInitialStandings(league, squadName) : merged);
         }
       } catch {
-        setStandings(buildInitialStandings(league));
+        setStandings(buildInitialStandings(league, squadName));
       }
     } else {
-      setStandings(buildInitialStandings(league));
+      setStandings(buildInitialStandings(league, squadName));
     }
 
     const savedRoster = loadRosterCacheFromStorage();
@@ -744,7 +799,7 @@ export default function SimulatePage() {
   }, [standings, seasonStateLoaded]);
 
   const filteredStandings = sortStandings(standings).filter((entry) => {
-    if (entry.name === "My Squad") {
+    if (entry.name === mySquadName) {
       return selectedStandingsLeague === playableLeague;
     }
     return entry.league === selectedStandingsLeague;
@@ -752,8 +807,8 @@ export default function SimulatePage() {
 
   const displayStandings = filteredStandings.length > 0
     ? filteredStandings
-    : sortStandings(buildInitialStandings(playableLeague)).filter((entry) => {
-        if (entry.name === "My Squad") {
+    : sortStandings(buildInitialStandings(playableLeague, mySquadName)).filter((entry) => {
+        if (entry.name === mySquadName) {
           return selectedStandingsLeague === playableLeague;
         }
         return entry.league === selectedStandingsLeague;
@@ -897,6 +952,7 @@ export default function SimulatePage() {
 
     if (opponentToUse) {
       setSelectedOpponent(opponentToUse);
+      setLastMatchOpponentName(opponentToUse.name);
 
       const opponentRosterObjects = opponentPlayers.length
         ? opponentPlayers
@@ -907,7 +963,7 @@ export default function SimulatePage() {
 
       const mainMatch = simulateMatch(myRating, opponentToUse.rating, homeRosterNames, opponentRosterNames);
       matches.push({
-        home: "My Squad",
+        home: mySquadName,
         away: opponentToUse.name,
         homeGoals: mainMatch.homeGoals,
         awayGoals: mainMatch.awayGoals,
@@ -931,6 +987,32 @@ export default function SimulatePage() {
     setSeasonWeek(seasonWeek + 1);
 
     setOtherMatchdayResults(otherMatches);
+  };
+
+  const playVsAccountTeam = () => {
+    if (myPlayers.length < 11) {
+      alert("You need 11 players on the pitch to play a head-to-head match.");
+      return;
+    }
+
+    const target = accountOpponents.find((opp) => opp.username === selectedAccountOpponent);
+    if (!target) {
+      alert("No account squad selected.");
+      return;
+    }
+
+    if (target.players.length < 11) {
+      alert("That account does not have 11 players on the pitch yet.");
+      return;
+    }
+
+    const opponentRosterNames = target.players.slice(0, 11).map((p) => p.name);
+    const mainMatch = simulateMatch(myRating, target.rating, myPlayers.slice(0, 11), opponentRosterNames);
+
+    setSelectedOpponent(null);
+    setLastMatchOpponentName(`${target.username}'s Squad`);
+    setOtherMatchdayResults([]);
+    setResult(mainMatch);
   };
 
   const simulateSeason = () => {
@@ -973,7 +1055,7 @@ export default function SimulatePage() {
         );
 
         allMatches.push({
-          home: "My Squad",
+          home: mySquadName,
           away: opponent.name,
           homeGoals: mainMatch.homeGoals,
           awayGoals: mainMatch.awayGoals,
@@ -997,6 +1079,7 @@ export default function SimulatePage() {
     updateStandings(allMatches);
     setPlayedWeeks(newPlayedWeeks);
     setSeasonWeek(lastWeek + 1);
+    setLastMatchOpponentName(null);
     setResult(null);
     setOtherMatchdayResults([]);
 
@@ -1203,6 +1286,46 @@ export default function SimulatePage() {
             </button>
           </div>
 
+          <div className="mb-4 rounded-2xl border border-gray-700 bg-gray-950/40 p-4">
+            <h3 className="text-sm font-semibold text-gray-200">Play Against Another Account</h3>
+            <p className="mt-1 mb-3 text-xs text-gray-400">
+              Choose another account's saved squad (same browser) for a head-to-head match.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <select
+                value={selectedAccountOpponent}
+                onChange={(e) => setSelectedAccountOpponent(e.target.value)}
+                className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white sm:max-w-xs"
+                disabled={accountOpponents.length === 0}
+              >
+                {accountOpponents.length === 0 ? (
+                  <option value="">No eligible account squads found</option>
+                ) : (
+                  accountOpponents.map((opp) => (
+                    <option key={opp.username} value={opp.username}>
+                      {opp.username} (OVR {opp.rating})
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={playVsAccountTeam}
+                disabled={accountOpponents.length === 0 || rosterLoading || myPlayers.length < 11}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-700"
+              >
+                Challenge Account Squad
+              </button>
+              <button
+                type="button"
+                onClick={() => loadAccountOpponents(getCurrentUser())}
+                className="rounded-xl bg-gray-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-600"
+              >
+                Refresh Accounts
+              </button>
+            </div>
+          </div>
+
           <button
             onClick={() => !isSeasonComplete && playMatch()}
             disabled={isSeasonComplete || rosterLoading || playedWeeks.has(seasonWeek) || (!!currentWeekOpponent && myPlayers.length < 11)}
@@ -1261,12 +1384,12 @@ export default function SimulatePage() {
             <div className="text-gray-400 text-sm mb-2">Full Time</div>
             <div className="flex items-center justify-center gap-6">
               <div>
-                <div className="text-lg font-semibold">My Squad</div>
+                <div className="text-lg font-semibold">{mySquadName}</div>
                 <div className="text-6xl font-bold text-yellow-400">{result.homeGoals}</div>
               </div>
               <div className="text-3xl text-gray-500">—</div>
               <div>
-                <div className="text-lg font-semibold">{selectedOpponent!.name}</div>
+                <div className="text-lg font-semibold">{lastMatchOpponentName || selectedOpponent?.name || "Opponent"}</div>
                 <div className="text-6xl font-bold text-red-400">{result.awayGoals}</div>
               </div>
             </div>
