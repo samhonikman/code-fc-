@@ -126,16 +126,10 @@ const opponents: OpponentTeam[] = [
 
 const leagueOrder = ["La Liga", "Premier League", "Bundesliga", "Ligue 1", "Serie A"];
 
-const playableLeague = "Premier League";
-
 const groupedOpponents: Record<string, OpponentTeam[]> = leagueOrder.reduce((acc, league) => {
   acc[league] = opponents.filter((opp) => opp.league === league);
   return acc;
 }, {} as Record<string, OpponentTeam[]>);
-
-const playableOpponents = groupedOpponents[playableLeague] || [];
-
-const leagueOptions = [playableLeague, ...leagueOrder.filter((league) => league !== playableLeague)];
 
 const leagueByTeam: Record<string, string> = opponents.reduce((acc, opp) => {
   acc[opp.name] = opp.league;
@@ -155,20 +149,86 @@ type SeasonState = {
   played: Set<number>;
 };
 
-const generateSeasonFixtures = (): string[] => {
-  const teams = playableOpponents.map((t) => t.name).filter((name) => name !== "My Squad");
-  const allFixtures: string[] = [];
-  
-  // Create a shuffled list of all teams twice (38 weeks for 20 teams)
-  const fixtureList = [...teams, ...teams];
-  
-  // Shuffle the fixture list randomly
-  for (let i = fixtureList.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [fixtureList[i], fixtureList[j]] = [fixtureList[j], fixtureList[i]];
+type SeasonFixture = {
+  mySquadOpponent: string | null;
+  otherMatches: Array<{ home: string; away: string }>;
+};
+
+// Builds a balanced round-robin schedule (circle method) so every team
+// plays exactly once per round, guaranteeing an equal number of games.
+const buildBalancedRounds = (teamNames: string[]): Array<Array<{ home: string; away: string }>> => {
+  const teamList = [...teamNames];
+  if (teamList.length % 2 !== 0) {
+    teamList.push("BYE");
   }
-  
-  return fixtureList;
+
+  const rounds: Array<Array<{ home: string; away: string }>> = [];
+  const rotation = [...teamList];
+  const totalRounds = teamList.length - 1;
+
+  for (let round = 0; round < totalRounds; round++) {
+    const half = rotation.length / 2;
+    const firstHalf = rotation.slice(0, half);
+    const secondHalf = rotation.slice(half).reverse();
+
+    const matches: Array<{ home: string; away: string }> = [];
+    for (let i = 0; i < half; i++) {
+      const home = firstHalf[i];
+      const away = secondHalf[i];
+      if (home === "BYE" || away === "BYE") continue;
+      matches.push({ home, away });
+    }
+    rounds.push(matches);
+
+    const last = rotation.pop();
+    if (last) rotation.splice(1, 0, last);
+  }
+
+  return rounds;
+};
+
+const generateSeasonFixtures = (playableLeague: string): SeasonFixture[] => {
+  // Include "My Squad" as a full participant in the round-robin so every
+  // real team always plays its normal fixture every week — nobody's match
+  // is ever removed/skipped just to make room for a My Squad fixture.
+  const playableOpponents = groupedOpponents[playableLeague] || [];
+  const teams = [...playableOpponents.map((t) => t.name), "My Squad"];
+  const singleRounds = buildBalancedRounds(teams);
+  // Second half of the season is the reverse fixtures (home/away swapped).
+  const allRounds = [
+    ...singleRounds,
+    ...singleRounds.map((round) => round.map(({ home, away }) => ({ home: away, away: home }))),
+  ];
+
+  return allRounds.map((round) => {
+    const mySquadMatchIndex = round.findIndex((m) => m.home === "My Squad" || m.away === "My Squad");
+    if (mySquadMatchIndex === -1) {
+      // Odd participant count means My Squad gets a bye exactly once per
+      // single round-robin leg (same as every other team) — real teams
+      // still play their full round of matches this week.
+      return { mySquadOpponent: null, otherMatches: round };
+    }
+    const mySquadMatch = round[mySquadMatchIndex];
+    const mySquadOpponent = mySquadMatch.home === "My Squad" ? mySquadMatch.away : mySquadMatch.home;
+    const otherMatches = round.filter((_, index) => index !== mySquadMatchIndex);
+    return { mySquadOpponent, otherMatches };
+  });
+};
+
+// Builds a balanced double round-robin schedule for every non-playable league
+// so their standings also progress week over week alongside the playable league.
+const generateOtherLeagueFixtures = (playableLeague: string): Record<string, Array<Array<{ home: string; away: string }>>> => {
+  const result: Record<string, Array<Array<{ home: string; away: string }>>> = {};
+  for (const league of leagueOrder) {
+    if (league === playableLeague) continue;
+    const teams = (groupedOpponents[league] || []).map((t) => t.name);
+    const singleRounds = buildBalancedRounds(teams);
+    result[league] = [
+      ...singleRounds,
+      ...singleRounds.map((round) => round.map(({ home, away }) => ({ home: away, away: home }))),
+    ];
+  }
+  return result;
 };
 
 
@@ -220,7 +280,7 @@ const opponentFallbackPlayers: Record<string, string[]> = {
   "Atletico Madrid": ["Griezmann", "Felix", "Koke", "Oblak", "Llorente", "Trippier", "De Paul"],
 };
 
-const initialStandings: LeagueEntry[] = [
+const buildInitialStandings = (playableLeague: string): LeagueEntry[] => [
   {
     name: "My Squad",
     league: playableLeague,
@@ -425,6 +485,11 @@ const eventIcon: Record<string, string> = {
   red: "🟥",
 };
 
+// Bump this whenever the fixture-generation algorithm changes so any
+// previously saved (possibly unbalanced) season schedule is discarded
+// and regenerated instead of silently reused.
+const SEASON_SCHEDULE_VERSION = "3";
+
 export default function SimulatePage() {
   const [isClientReady, setIsClientReady] = useState(false);
   const [seasonStateLoaded, setSeasonStateLoaded] = useState(false);
@@ -437,11 +502,17 @@ export default function SimulatePage() {
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [myRating, setMyRating] = useState<number>(90);
   const [myPlayers, setMyPlayers] = useState<any[]>([]);
-  const [standings, setStandings] = useState<LeagueEntry[]>(initialStandings);
-  const [selectedStandingsLeague, setSelectedStandingsLeague] = useState<string>(playableLeague);
+  const [playableLeague, setPlayableLeague] = useState<string>("Premier League");
+  const [resetLeagueChoice, setResetLeagueChoice] = useState<string>("Premier League");
+  const [standings, setStandings] = useState<LeagueEntry[]>(() => buildInitialStandings("Premier League"));
+  const [selectedStandingsLeague, setSelectedStandingsLeague] = useState<string>("Premier League");
   const [seasonWeek, setSeasonWeek] = useState<number>(1);
-  const [seasonFixtures, setSeasonFixtures] = useState<string[]>([]);
+  const [seasonFixtures, setSeasonFixtures] = useState<SeasonFixture[]>([]);
   const [playedWeeks, setPlayedWeeks] = useState<Set<number>>(new Set());
+  const [otherLeagueFixtures, setOtherLeagueFixtures] = useState<Record<string, Array<Array<{ home: string; away: string }>>>>({});
+
+  const playableOpponents = groupedOpponents[playableLeague] || [];
+  const leagueOptions = [playableLeague, ...leagueOrder.filter((league) => league !== playableLeague)];
 
   const loadRosterCacheFromStorage = (): RosterCache | null => {
     if (typeof window === "undefined") return null;
@@ -501,9 +572,9 @@ export default function SimulatePage() {
     setRosterLoading(false);
   };
 
-  const mergeStandingsWithInitial = (parsed: LeagueEntry[]) => {
+  const mergeStandingsWithInitial = (parsed: LeagueEntry[], league: string) => {
     const parsedMap = new Map(parsed.map((entry) => [entry.name, entry]));
-    return initialStandings.map((initial) => {
+    return buildInitialStandings(league).map((initial) => {
       const saved = parsedMap.get(initial.name);
       if (!saved) return initial;
       return {
@@ -517,25 +588,32 @@ export default function SimulatePage() {
   const resetSeason = () => {
     if (typeof window === "undefined") return;
 
-    const freshFixtures = generateSeasonFixtures();
-    const resetStandings = initialStandings;
+    const targetLeague = resetLeagueChoice;
+    const freshFixtures = generateSeasonFixtures(targetLeague);
+    const freshOtherLeagueFixtures = generateOtherLeagueFixtures(targetLeague);
+    const resetStandings = buildInitialStandings(targetLeague);
 
+    localStorage.setItem("playableLeague", targetLeague);
     localStorage.setItem("seasonWeek", "1");
     localStorage.setItem("seasonFixtures", JSON.stringify(freshFixtures));
+    localStorage.setItem("otherLeagueFixtures", JSON.stringify(freshOtherLeagueFixtures));
+    localStorage.setItem("seasonScheduleVersion", SEASON_SCHEDULE_VERSION);
     localStorage.setItem("playedWeeks", JSON.stringify([]));
     localStorage.setItem("leagueStandings", JSON.stringify(resetStandings));
 
+    setPlayableLeague(targetLeague);
     setSeasonWeek(1);
     setSeasonFixtures(freshFixtures);
+    setOtherLeagueFixtures(freshOtherLeagueFixtures);
     setPlayedWeeks(new Set());
     setStandings(resetStandings);
     setResult(null);
     setOtherMatchdayResults([]);
     setSelectedOpponent(null);
-    setSelectedStandingsLeague(playableLeague);
+    setSelectedStandingsLeague(targetLeague);
     setOpponentPlayers([]);
 
-    alert("Season reset.");
+    alert(`Season reset. You are now playing in the ${targetLeague}.`);
   };
 
   useEffect(() => {
@@ -554,35 +632,72 @@ export default function SimulatePage() {
       .map((player: any) => ({ name: player.name, rating: player.rating || 75, position: player.position || "CM" }));
     setMyPlayers(loadedPlayers);
 
+    const savedPlayableLeague = localStorage.getItem("playableLeague");
+    const league = savedPlayableLeague && leagueOrder.includes(savedPlayableLeague) ? savedPlayableLeague : "Premier League";
+    setPlayableLeague(league);
+    setResetLeagueChoice(league);
+    setSelectedStandingsLeague(league);
+
     // Load season state
     const savedSeasonWeek = localStorage.getItem("seasonWeek");
     const savedSeasonFixtures = localStorage.getItem("seasonFixtures");
     const savedPlayedWeeks = localStorage.getItem("playedWeeks");
 
-    if (savedSeasonFixtures) {
+    const savedScheduleVersion = localStorage.getItem("seasonScheduleVersion");
+    const isStaleVersion = savedScheduleVersion !== SEASON_SCHEDULE_VERSION;
+
+    if (savedSeasonFixtures && !isStaleVersion) {
       try {
         const parsedFixtures = JSON.parse(savedSeasonFixtures);
-        if (Array.isArray(parsedFixtures) && parsedFixtures.length > 0) {
+        // Legacy saves stored fixtures as string[]; regenerate with the balanced schedule if so.
+        const isLegacyFormat = Array.isArray(parsedFixtures) && parsedFixtures.length > 0 && typeof parsedFixtures[0] === "string";
+        if (Array.isArray(parsedFixtures) && parsedFixtures.length > 0 && !isLegacyFormat) {
           setSeasonFixtures(parsedFixtures);
           setSeasonWeek(savedSeasonWeek ? parseInt(savedSeasonWeek, 10) : 1);
           setPlayedWeeks(new Set(JSON.parse(savedPlayedWeeks || "[]")));
         } else {
-          const newFixtures = generateSeasonFixtures();
+          const newFixtures = generateSeasonFixtures(league);
+          localStorage.setItem("seasonScheduleVersion", SEASON_SCHEDULE_VERSION);
           setSeasonFixtures(newFixtures);
           setSeasonWeek(1);
           setPlayedWeeks(new Set());
         }
       } catch {
-        const newFixtures = generateSeasonFixtures();
+        const newFixtures = generateSeasonFixtures(league);
+        localStorage.setItem("seasonScheduleVersion", SEASON_SCHEDULE_VERSION);
         setSeasonFixtures(newFixtures);
         setSeasonWeek(1);
         setPlayedWeeks(new Set());
       }
     } else {
-      const newFixtures = generateSeasonFixtures();
+      const newFixtures = generateSeasonFixtures(league);
+      localStorage.setItem("seasonScheduleVersion", SEASON_SCHEDULE_VERSION);
       setSeasonFixtures(newFixtures);
       setSeasonWeek(1);
       setPlayedWeeks(new Set());
+    }
+
+    // Load (or regenerate, if stale/missing) the other 4 leagues' fixtures.
+    const savedOtherLeagueFixtures = localStorage.getItem("otherLeagueFixtures");
+    if (savedOtherLeagueFixtures && !isStaleVersion) {
+      try {
+        const parsed = JSON.parse(savedOtherLeagueFixtures);
+        if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+          setOtherLeagueFixtures(parsed);
+        } else {
+          const newOtherLeagueFixtures = generateOtherLeagueFixtures(league);
+          localStorage.setItem("otherLeagueFixtures", JSON.stringify(newOtherLeagueFixtures));
+          setOtherLeagueFixtures(newOtherLeagueFixtures);
+        }
+      } catch {
+        const newOtherLeagueFixtures = generateOtherLeagueFixtures(league);
+        localStorage.setItem("otherLeagueFixtures", JSON.stringify(newOtherLeagueFixtures));
+        setOtherLeagueFixtures(newOtherLeagueFixtures);
+      }
+    } else {
+      const newOtherLeagueFixtures = generateOtherLeagueFixtures(league);
+      localStorage.setItem("otherLeagueFixtures", JSON.stringify(newOtherLeagueFixtures));
+      setOtherLeagueFixtures(newOtherLeagueFixtures);
     }
 
     const savedStandings = localStorage.getItem("leagueStandings");
@@ -590,13 +705,15 @@ export default function SimulatePage() {
       try {
         const parsed = JSON.parse(savedStandings) as LeagueEntry[];
         if (Array.isArray(parsed) && parsed.length) {
-          const merged = mergeStandingsWithInitial(parsed);
+          const merged = mergeStandingsWithInitial(parsed, league);
           const invalidLeagueData = merged.some((entry) => entry.name !== "My Squad" && !entry.league);
-          setStandings(invalidLeagueData ? initialStandings : merged);
+          setStandings(invalidLeagueData ? buildInitialStandings(league) : merged);
         }
       } catch {
-        setStandings(initialStandings);
+        setStandings(buildInitialStandings(league));
       }
+    } else {
+      setStandings(buildInitialStandings(league));
     }
 
     const savedRoster = loadRosterCacheFromStorage();
@@ -618,6 +735,11 @@ export default function SimulatePage() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !seasonStateLoaded) return;
+    localStorage.setItem("otherLeagueFixtures", JSON.stringify(otherLeagueFixtures));
+  }, [otherLeagueFixtures, seasonStateLoaded]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !seasonStateLoaded) return;
     localStorage.setItem("leagueStandings", JSON.stringify(standings));
   }, [standings, seasonStateLoaded]);
 
@@ -630,15 +752,18 @@ export default function SimulatePage() {
 
   const displayStandings = filteredStandings.length > 0
     ? filteredStandings
-    : sortStandings(initialStandings).filter((entry) => {
+    : sortStandings(buildInitialStandings(playableLeague)).filter((entry) => {
         if (entry.name === "My Squad") {
           return selectedStandingsLeague === playableLeague;
         }
         return entry.league === selectedStandingsLeague;
       });
 
-  const currentWeekOpponentName = seasonFixtures[seasonWeek - 1] || null;
+  const currentWeekFixture = seasonFixtures[seasonWeek - 1] || null;
+  const currentWeekOpponentName = currentWeekFixture?.mySquadOpponent || null;
   const currentWeekOpponent = playableOpponents.find((opp) => opp.name === currentWeekOpponentName) || null;
+  const isSeasonComplete = seasonFixtures.length > 0 && seasonWeek > seasonFixtures.length;
+  const isByeWeek = !isSeasonComplete && !!currentWeekFixture && !currentWeekOpponent;
 
   useEffect(() => {
     if (!currentWeekOpponent) {
@@ -727,56 +852,76 @@ export default function SimulatePage() {
     );
   };
 
-  const generateOtherMatchday = (excludedOpponent: string) => {
-    const otherTeams = playableOpponents
-      .filter((opp) => opp.name !== excludedOpponent)
-      .map((opp) => opp);
-
-    const shuffled = shuffle(otherTeams);
-    const matchday: LeagueMatch[] = [];
-
-    while (shuffled.length >= 2) {
-      const home = shuffled.shift()!;
-      const away = shuffled.shift()!;
-      const match = simulateMatch(home.rating, away.rating, getRosterForTeam(home.name), getRosterForTeam(away.name));
-
-      matchday.push({
-        home: home.name,
-        away: away.name,
+  // Simulates the pre-computed other-matches for a given round so every team
+  // gets exactly one game per week (balanced schedule), instead of random pairing.
+  const simulateOtherMatches = (otherMatches: Array<{ home: string; away: string }>): LeagueMatch[] => {
+    return otherMatches.map(({ home, away }) => {
+      // Look up teams in the global opponents list (not just the playable
+      // league) so matches from any of the 5 leagues can be simulated.
+      const homeTeam = opponents.find((opp) => opp.name === home);
+      const awayTeam = opponents.find((opp) => opp.name === away);
+      if (!homeTeam || !awayTeam) {
+        return { home, away, homeGoals: 0, awayGoals: 0, events: [] };
+      }
+      const match = simulateMatch(homeTeam.rating, awayTeam.rating, getRosterForTeam(homeTeam.name), getRosterForTeam(awayTeam.name));
+      return {
+        home: homeTeam.name,
+        away: awayTeam.name,
         homeGoals: match.homeGoals,
         awayGoals: match.awayGoals,
         events: match.events,
-      });
-    }
+      };
+    });
+  };
 
-    return matchday;
+  // Simulates the given week's round for every non-playable league. Those
+  // leagues have fewer weeks than the playable league's season (20 teams =
+  // 38 weeks vs. 21 participants = 42 weeks), so once a league's schedule
+  // runs out its standings simply stay at their final values.
+  const simulateOtherLeaguesWeek = (weekIndex: number): LeagueMatch[] => {
+    const allMatches: LeagueMatch[] = [];
+    for (const league of Object.keys(otherLeagueFixtures)) {
+      const round = otherLeagueFixtures[league][weekIndex];
+      if (!round) continue;
+      allMatches.push(...simulateOtherMatches(round));
+    }
+    return allMatches;
   };
 
   const playMatch = () => {
-    if (!currentWeekOpponent) return;
+    if (isSeasonComplete) return;
     const opponentToUse = currentWeekOpponent;
-    setSelectedOpponent(opponentToUse);
+    const otherMatches = simulateOtherMatches(currentWeekFixture?.otherMatches || []);
+    const otherLeagueMatches = simulateOtherLeaguesWeek(seasonWeek - 1);
+    const matches: LeagueMatch[] = [...otherMatches, ...otherLeagueMatches];
 
-    const opponentRosterObjects = opponentPlayers.length
-      ? opponentPlayers
-      : createRosterWithStats(opponentToUse.name, opponentToUse.rating, opponentFallbackPlayers[opponentToUse.name] || []);
+    if (opponentToUse) {
+      setSelectedOpponent(opponentToUse);
 
-    const opponentRosterNames = opponentRosterObjects.map((p) => p.name);
-    const homeRosterNames = myPlayers.slice(0, 11);
+      const opponentRosterObjects = opponentPlayers.length
+        ? opponentPlayers
+        : createRosterWithStats(opponentToUse.name, opponentToUse.rating, opponentFallbackPlayers[opponentToUse.name] || []);
 
-    const mainMatch = simulateMatch(myRating, opponentToUse.rating, homeRosterNames, opponentRosterNames);
-    const otherMatches = generateOtherMatchday(opponentToUse.name);
+      const opponentRosterNames = opponentRosterObjects.map((p) => p.name);
+      const homeRosterNames = myPlayers.slice(0, 11);
 
-    updateStandings([
-      {
+      const mainMatch = simulateMatch(myRating, opponentToUse.rating, homeRosterNames, opponentRosterNames);
+      matches.push({
         home: "My Squad",
         away: opponentToUse.name,
         homeGoals: mainMatch.homeGoals,
         awayGoals: mainMatch.awayGoals,
         events: mainMatch.events,
-      },
-      ...otherMatches,
-    ]);
+      });
+      setResult(mainMatch);
+    } else {
+      // Bye week: My Squad has no fixture, but the real teams still play.
+      setSelectedOpponent(null);
+      setResult(null);
+      alert("Bye week: your squad has no match this week. Other league results have been recorded.");
+    }
+
+    updateStandings(matches);
 
     // Mark this week as played and advance to next week
     const newPlayedWeeks = new Set(playedWeeks);
@@ -785,7 +930,6 @@ export default function SimulatePage() {
 
     setSeasonWeek(seasonWeek + 1);
 
-    setResult(mainMatch);
     setOtherMatchdayResults(otherMatches);
   };
 
@@ -796,7 +940,7 @@ export default function SimulatePage() {
     }
 
     const remainingWeeks = seasonFixtures
-      .map((name, i) => ({ week: i + 1, name }))
+      .map((fixture, i) => ({ week: i + 1, fixture }))
       .filter(({ week }) => !playedWeeks.has(week));
 
     if (remainingWeeks.length === 0) {
@@ -808,34 +952,42 @@ export default function SimulatePage() {
     const newPlayedWeeks = new Set(playedWeeks);
     let lastWeek = seasonWeek;
 
-    for (const { week, name: opponentName } of remainingWeeks) {
-      const opponent = playableOpponents.find((o) => o.name === opponentName);
-      if (!opponent) continue;
+    for (const { week, fixture } of remainingWeeks) {
+      const opponentName = fixture.mySquadOpponent;
+      const opponent = opponentName ? playableOpponents.find((o) => o.name === opponentName) : null;
 
-      const opponentRosterNames = rosterCache[opponent.name]
-        ? rosterCache[opponent.name].map((p) => p.name)
-        : createRosterWithStats(
-            opponent.name,
-            opponent.rating,
-            opponentFallbackPlayers[opponent.name] || []
-          ).map((p) => p.name);
+      if (opponent) {
+        const opponentRosterNames = rosterCache[opponent.name]
+          ? rosterCache[opponent.name].map((p) => p.name)
+          : createRosterWithStats(
+              opponent.name,
+              opponent.rating,
+              opponentFallbackPlayers[opponent.name] || []
+            ).map((p) => p.name);
 
-      const mainMatch = simulateMatch(
-        myRating,
-        opponent.rating,
-        myPlayers.slice(0, 11),
-        opponentRosterNames
-      );
-      const otherMatches = generateOtherMatchday(opponent.name);
+        const mainMatch = simulateMatch(
+          myRating,
+          opponent.rating,
+          myPlayers.slice(0, 11),
+          opponentRosterNames
+        );
 
-      allMatches.push({
-        home: "My Squad",
-        away: opponent.name,
-        homeGoals: mainMatch.homeGoals,
-        awayGoals: mainMatch.awayGoals,
-        events: mainMatch.events,
-      });
+        allMatches.push({
+          home: "My Squad",
+          away: opponent.name,
+          homeGoals: mainMatch.homeGoals,
+          awayGoals: mainMatch.awayGoals,
+          events: mainMatch.events,
+        });
+      }
+
+      // Bye weeks (opponent === null) still need the real teams' matches simulated
+      // and the week marked as played, otherwise it would remain "remaining" forever.
+      const otherMatches = simulateOtherMatches(fixture.otherMatches || []);
       allMatches.push(...otherMatches);
+
+      const otherLeagueMatches = simulateOtherLeaguesWeek(week - 1);
+      allMatches.push(...otherLeagueMatches);
 
       newPlayedWeeks.add(week);
       lastWeek = week;
@@ -971,10 +1123,15 @@ export default function SimulatePage() {
                     </div>
                   )}
                 </>
-              ) : (
+              ) : isSeasonComplete ? (
                 <div className="rounded-2xl p-6 bg-gray-800 border-2 border-gray-700 text-center">
                   <p className="text-green-400 font-bold text-lg">Season Complete! 🎉</p>
-                  <p className="text-gray-300 text-sm mt-2">All 38 weeks have been played.</p>
+                  <p className="text-gray-300 text-sm mt-2">All {seasonFixtures.length} weeks have been played.</p>
+                </div>
+              ) : (
+                <div className="rounded-2xl p-6 bg-gray-800 border-2 border-dashed border-gray-600 text-center">
+                  <p className="text-yellow-300 font-bold text-lg">Bye Week</p>
+                  <p className="text-gray-300 text-sm mt-2">Your squad has no fixture this week. Other league results still play out.</p>
                 </div>
               )}
             </div>
@@ -1047,19 +1204,21 @@ export default function SimulatePage() {
           </div>
 
           <button
-            onClick={() => currentWeekOpponent && playMatch()}
-            disabled={!currentWeekOpponent || rosterLoading || playedWeeks.has(seasonWeek) || myPlayers.length < 11}
+            onClick={() => !isSeasonComplete && playMatch()}
+            disabled={isSeasonComplete || rosterLoading || playedWeeks.has(seasonWeek) || (!!currentWeekOpponent && myPlayers.length < 11)}
             className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold text-xl py-4 rounded-xl transition-colors"
           >
-            {currentWeekOpponent
-              ? playedWeeks.has(seasonWeek)
-                ? `✓ Week ${seasonWeek} Played - Advance to Week ${seasonWeek + 1}`
-                : myPlayers.length < 11
-                ? "Need 11 players to play"
-                : rosterLoading
-                ? "Loading roster..."
-                : `Play Week ${seasonWeek} vs ${currentWeekOpponent.name}`
-              : "Season Complete!"}
+            {isSeasonComplete
+              ? "Season Complete!"
+              : playedWeeks.has(seasonWeek)
+              ? `✓ Week ${seasonWeek} Played - Advance to Week ${seasonWeek + 1}`
+              : !currentWeekOpponent
+              ? `Bye Week - Continue to Week ${seasonWeek + 1}`
+              : myPlayers.length < 11
+              ? "Need 11 players to play"
+              : rosterLoading
+              ? "Loading roster..."
+              : `Play Week ${seasonWeek} vs ${currentWeekOpponent.name}`}
           </button>
 
           <button
@@ -1070,12 +1229,30 @@ export default function SimulatePage() {
             ⚡ Simulate Season
           </button>
 
-          <button
-            onClick={resetSeason}
-            className="w-full bg-red-600 hover:bg-red-500 text-white font-bold text-lg py-3 rounded-xl transition-colors mt-4"
-          >
-            Reset Season
-          </button>
+          <div className="mt-4 rounded-2xl border border-gray-700 bg-gray-950/40 p-4">
+            <h3 className="text-sm font-semibold text-gray-200">Reset Season</h3>
+            <p className="mt-1 mb-3 text-xs text-gray-400">
+              Choose which league you want to play in, then reset to start a new season.
+            </p>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {leagueOrder.map((league) => (
+                <button
+                  key={league}
+                  type="button"
+                  onClick={() => setResetLeagueChoice(league)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${resetLeagueChoice === league ? "bg-yellow-500 text-black" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
+                >
+                  {league}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={resetSeason}
+              className="w-full bg-red-600 hover:bg-red-500 text-white font-bold text-lg py-3 rounded-xl transition-colors"
+            >
+              {resetLeagueChoice === playableLeague ? "Reset Season" : `Reset Season & Play in ${resetLeagueChoice}`}
+            </button>
+          </div>
         </>
       ) : (
         <>
