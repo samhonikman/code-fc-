@@ -5,6 +5,7 @@ import Pitch from "./Pitch";
 import Bench from "./Bench";
 import PlayerModal from "./PlayerModal";
 import { getUserKey } from "@/lib/user";
+import { syncSquadToSupabase } from "@/lib/squadSync";
 
 function normalizeName(name: string | undefined | null) {
   if (!name) return "";
@@ -155,6 +156,21 @@ export default function SquadManager() {
     if (!isLoaded) return;
     localStorage.setItem(getUserKey("benchPlayers"), JSON.stringify(bench));
   }, [bench, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded || typeof window === "undefined") return;
+
+    const bought = JSON.parse(localStorage.getItem(getUserKey("boughtPlayers")) || "[]") as any[];
+    const hasSquadData = Object.keys(positions).length > 0 || bench.length > 0 || bought.length > 0 || parseInt(localStorage.getItem(getUserKey("budget")) || "0", 10) > 0;
+
+    if (!hasSquadData) return;
+
+    const timer = window.setTimeout(() => {
+      void syncSquadToSupabase({ positions, bench });
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [positions, bench, isLoaded]);
 
   const sellPlayer = (player: Player) => {
     setBench((prev) => prev.filter((p) => p.id !== player.id));

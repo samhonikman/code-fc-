@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import getSupabaseClient from "@/lib/supabaseClient";
-import { getUserKey } from "@/lib/user";
+import { syncSquadToSupabase } from "@/lib/squadSync";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -58,35 +58,16 @@ export default function SignInPage() {
 
   async function migrateToSupabase(accessToken: string, userId: string) {
     try {
-      // Use user-scoped keys so each account migrates its own squad.
-      const bought = JSON.parse(localStorage.getItem(getUserKey("boughtPlayers")) || "[]");
-      const positions = JSON.parse(localStorage.getItem(getUserKey("pitchPositions")) || "{}");
-      const bench = JSON.parse(localStorage.getItem(getUserKey("benchPlayers")) || "[]");
-      const budget = parseInt(localStorage.getItem(getUserKey("budget")) || "0", 10) || 0;
-
-      const payload = { budget, positions, bench, bought };
-
-      const res = await fetch('/api/squads', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        // mark migrated; keep local keys so existing local-first flows continue
-        // to work and squads don't disappear after sign-in.
-        localStorage.setItem('migrated_to_supabase', '1');
-      } else {
-        const text = await res.text();
-        const msg = `Migration failed: ${res.status} ${res.statusText} ${text}`;
-        console.warn(msg);
-        setMessage(msg);
+      const result = await syncSquadToSupabase();
+      if (!result.ok) {
+        const message = result.reason === "no-session"
+          ? "No active account session was available to save your squad yet."
+          : `Migration failed: ${result.status ?? ""} ${result.body ?? ""}`.trim();
+        console.warn(message);
+        setMessage(message);
       }
     } catch (e) {
-      console.warn('Migration error', e);
+      console.warn("Migration error", e);
     }
   }
 

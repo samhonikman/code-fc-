@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { getUserKey } from "@/lib/user";
+import { syncSquadToSupabase } from "@/lib/squadSync";
 
 type Player = {
   id: number;
@@ -226,6 +227,7 @@ export default function TransferMarketPage() {
     setBoughtPlayers(updated);
     setMarketPlayers((current) => current ? current.filter((p) => p.id !== player.id) : current);
     alert(`${player.name} signed! $${player.price.toLocaleString()} spent.`);
+    syncSquadToSupabase();
   };
 
   const sellPlayer = (player: Player) => {
@@ -253,6 +255,7 @@ export default function TransferMarketPage() {
     setBudget(newBudget);
     setBoughtPlayers(updated);
     alert(`${player.name} sold for $${player.price.toLocaleString()}!`);
+    void syncSquadToSupabase();
   };
 
   const clearAllSquadPlayers = () => {
@@ -273,6 +276,7 @@ export default function TransferMarketPage() {
     setBudget(newBudget);
 
     alert(`Squad cleared. Refunded $${refund.toLocaleString()}.`);
+    void syncSquadToSupabase();
   };
 
   // Debug helper: fill pitch with position-correct random players, deducting cost from budget
@@ -366,6 +370,7 @@ export default function TransferMarketPage() {
     setMarketPlayers((cur) => (cur ? cur.filter((m) => !selected.find((s) => s.id === m.id)) : cur));
 
     alert(`Filled squad with ${selected.length} players. $${totalCost.toLocaleString()} deducted.`);
+    void syncSquadToSupabase();
   };
 
   useEffect(() => {
